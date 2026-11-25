@@ -1,0 +1,770 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WS Stock Analyzer</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<meta name="theme-color" content="#0d8a5f">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="WS Stocks">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#f5f7f6; --surface:#ffffff; --surface2:#f0f3f2; --border:#e1e6e4; --text:#16201c; --muted:#66736e;
+  --accent:#0d8a5f; --accent-soft:#e3f4ec; --pos:#0f8a4a; --neg:#c43c3c; --warn:#b7791f; --info:#2f6fb3;
+  --shadow:0 1px 2px rgba(0,0,0,.05),0 4px 16px rgba(0,0,0,.04);
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0f1513; --surface:#161e1b; --surface2:#1c2622; --border:#26322d; --text:#e6eeea; --muted:#8fa19a;
+  --accent:#34c48f; --accent-soft:#163a2c; --pos:#3ccf7d; --neg:#ef6b6b; --warn:#e3a94a; --info:#6aa6ea; --shadow:none;}}
+:root[data-theme="dark"]{
+  --bg:#0f1513; --surface:#161e1b; --surface2:#1c2622; --border:#26322d; --text:#e6eeea; --muted:#8fa19a;
+  --accent:#34c48f; --accent-soft:#163a2c; --pos:#3ccf7d; --neg:#ef6b6b; --warn:#e3a94a; --info:#6aa6ea; --shadow:none;}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:Cairo,"Segoe UI",Tahoma,sans-serif;font-size:14px;line-height:1.55}
+.wrap{max-width:1320px;margin:0 auto;padding:20px 16px 60px}
+header{display:flex;flex-wrap:wrap;align-items:center;gap:12px;justify-content:space-between;margin-bottom:18px}
+h1{font-size:22px;margin:0;font-weight:800}
+h1 span{color:var(--accent)}
+.sub{color:var(--muted);font-size:13px}
+.btn{background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:10px;padding:7px 12px;font:inherit;cursor:pointer}
+.btn:hover{border-color:var(--accent)}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-bottom:18px}
+.kpi{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:14px 16px;box-shadow:var(--shadow)}
+.kpi .l{color:var(--muted);font-size:12.5px}
+.kpi .v{font-size:24px;font-weight:800;font-variant-numeric:tabular-nums}
+.kpi .v small{font-size:13px;color:var(--muted);font-weight:600}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
+.tab{padding:7px 14px;border-radius:999px;border:1px solid var(--border);background:var(--surface);cursor:pointer;font:inherit;color:var(--text)}
+.tab.on{background:var(--accent);border-color:var(--accent);color:#fff}
+.filters{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;align-items:center}
+.filters input,.filters select{background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:10px;padding:7px 10px;font:inherit;min-width:0}
+.filters input[type=search]{flex:1 1 200px}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:14px;box-shadow:var(--shadow);overflow:hidden}
+.tbl{width:100%;border-collapse:collapse}
+.tbl th{font-size:12px;color:var(--muted);font-weight:700;text-align:right;padding:10px;background:var(--surface2);position:sticky;top:0;z-index:2;cursor:pointer;white-space:nowrap;box-shadow:inset 0 -1px 0 var(--border)}
+/* شريط البحث والفلاتر ثابت فوق، والجدول بيتحرك تحته وعناوينه ثابتة */
+#filters{position:sticky;top:0;z-index:15;background:var(--bg);padding:10px 0;margin:0 0 6px}
+/* الترتيب العام: خط أصغر شوية عشان كل الأعمدة تبان من غير يمين وشمال */
+#view .tbl th,#view .tbl td{padding:8px 6px}
+#view .tbl td{font-size:13px}
+#view .tbl .nm{max-width:170px}
+#view .tbl .bar{min-width:48px}
+/* وضع مضغوط لما التغير اليومي ظاهر، عشان الجدول كله يبان من غير يمين وشمال */
+#view .tbl.compact th,#view .tbl.compact td{padding:7px 4px;font-size:12px}
+#view .tbl.compact .nm{max-width:100px;font-size:11px}
+#view .tbl.compact .bar{min-width:34px}
+.tbl.compact .score{min-width:36px;padding:2px 5px}
+.tbl.compact .pill{padding:1px 6px;font-size:11px}
+.tbl.compact .chg{display:block}
+#view .scroll{max-height:calc(100vh - var(--fh, 64px) - 12px);overflow:auto}
+.tbl td{padding:9px 10px;border-top:1px solid var(--border);white-space:nowrap;font-variant-numeric:tabular-nums}
+.tbl tr.row{cursor:pointer}
+.tbl tr.row:hover td{background:var(--surface2)}
+.scroll{overflow-x:auto}
+.sym{font-weight:800;letter-spacing:.3px}
+.nm{color:var(--muted);font-size:12px;max-width:220px;overflow:hidden;text-overflow:ellipsis}
+.pos{color:var(--pos)} .neg{color:var(--neg)} .mut{color:var(--muted)}
+.pill{display:inline-block;padding:2px 10px;border-radius:999px;font-size:12px;font-weight:700}
+.p-sb{background:color-mix(in srgb,var(--pos) 18%,transparent);color:var(--pos)}
+.p-b{background:color-mix(in srgb,var(--pos) 10%,transparent);color:var(--pos)}
+.p-w{background:color-mix(in srgb,var(--warn) 14%,transparent);color:var(--warn)}
+.p-a{background:color-mix(in srgb,var(--neg) 12%,transparent);color:var(--neg)}
+.score{display:inline-flex;align-items:center;justify-content:center;min-width:44px;padding:3px 8px;border-radius:8px;font-weight:800;color:#fff}
+.bar{height:6px;background:var(--surface2);border-radius:4px;overflow:hidden;min-width:70px}
+.bar>i{display:block;height:100%;background:var(--accent);border-radius:4px}
+.rk{font-weight:800;color:var(--muted)}
+.chg{font-size:11px}
+.sectors{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px}
+.sec h3{margin:0;padding:12px 14px;font-size:15px;display:flex;justify-content:space-between;border-bottom:1px solid var(--border)}
+.sec .it{display:flex;align-items:center;gap:10px;padding:8px 14px;border-top:1px solid var(--border);cursor:pointer}
+.sec .it:first-of-type{border-top:0}
+.sec .it:hover{background:var(--surface2)}
+.sec .it .grow{flex:1;min-width:0}
+.drawer-bg{position:fixed;inset:0;background:rgba(0,0,0,.35);display:none;z-index:20}
+.drawer{position:fixed;top:0;bottom:0;left:0;width:min(560px,100%);background:var(--bg);z-index:21;overflow-y:auto;transform:translateX(-105%);transition:transform .22s ease;border-right:1px solid var(--border)}
+.drawer.on{transform:none}.drawer-bg.on{display:block}
+.dh{position:sticky;top:0;background:var(--surface);border-bottom:1px solid var(--border);padding:14px 16px;display:flex;justify-content:space-between;gap:10px;align-items:flex-start;z-index:1}
+.db{padding:14px 16px;display:grid;gap:12px}
+.box{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px 14px}
+.box h4{margin:0 0 8px;font-size:13.5px}
+.kv{display:grid;grid-template-columns:1fr auto;gap:4px 12px;font-size:13px}
+.kv span:nth-child(odd){color:var(--muted)}
+.sb{display:grid;grid-template-columns:90px 1fr 40px;gap:8px;align-items:center;font-size:13px;margin:4px 0}
+.tfs{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;text-align:center}
+.tfs div{background:var(--surface2);border-radius:8px;padding:6px 2px;font-size:12px}
+.tfs b{display:block;font-size:12px}
+.chk{display:grid;grid-template-columns:20px 1fr auto;gap:6px;font-size:12.5px;padding:4px 0;border-top:1px dashed var(--border)}
+.chk:first-of-type{border-top:0}
+.links a{color:var(--accent);margin-left:14px;font-weight:700;text-decoration:none}
+.note{color:var(--muted);font-size:12.5px}
+.err{background:color-mix(in srgb,var(--warn) 12%,transparent);border:1px solid color-mix(in srgb,var(--warn) 40%,transparent);color:var(--text);padding:10px 14px;border-radius:12px;margin-bottom:12px;font-size:12.5px}
+.empty{padding:40px;text-align:center;color:var(--muted)}
+.p-n{background:var(--surface2);color:var(--muted)}
+.chip{display:inline-block;background:var(--accent-soft);color:var(--accent);font-weight:800;border-radius:8px;padding:1px 8px;cursor:pointer;font-size:12.5px}
+.news-it{padding:12px 14px;border-top:1px solid var(--border);display:grid;gap:6px}
+.news-it:first-child{border-top:0}
+.box .news-it{padding:10px 0}
+.news-top{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.news-t{color:var(--text);font-weight:700;text-decoration:none;line-height:1.5}
+.news-t:hover{color:var(--accent)}
+.news-b{display:flex;flex-wrap:wrap;gap:4px 16px;font-size:12.5px}
+.news-day{font-size:14px;margin:16px 4px 8px}
+.hform{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:6px 0}
+.hform label{display:grid;gap:3px;font-size:12.5px;color:var(--muted)}
+.hform input{background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:10px;padding:7px 10px;font:inherit;min-width:0}
+.ptbl th{cursor:default}
+.ptbl .grp{background:color-mix(in srgb,var(--info) 7%,transparent)}
+.ptbl th.grp{background:color-mix(in srgb,var(--info) 16%,var(--surface2))}
+.ptbl .grp2{background:color-mix(in srgb,var(--accent) 6%,transparent)}
+.ptbl th.grp2{background:color-mix(in srgb,var(--accent) 14%,var(--surface2))}
+.paid{margin-top:12px;max-width:360px}
+.paid label{display:grid;gap:4px;font-size:13px;font-weight:700}
+.paid input{background:var(--surface);border:2px solid var(--accent);color:var(--text);border-radius:10px;padding:8px 10px;font:inherit;font-size:16px}
+.totrow td{border-top:2px solid var(--border);background:var(--surface2)}
+.ver{font-size:12px;font-weight:700;background:var(--accent-soft);color:var(--accent);padding:2px 8px;border-radius:999px;vertical-align:middle}
+.tbl th .dd{display:block;font-weight:400;font-size:11px}
+.tbl .grp{background:color-mix(in srgb,var(--accent) 5%,transparent)}
+.tbl th.grp{background:color-mix(in srgb,var(--accent) 12%,var(--surface2))}
+.tbl .sel-cell{width:34px;text-align:center;cursor:default}
+.tbl input[type=checkbox],.sec input[type=checkbox]{width:16px;height:16px;accent-color:var(--accent);cursor:pointer}
+.tbl tr.picked td{background:color-mix(in srgb,var(--accent) 8%,transparent)}
+.method p{margin:6px 0}
+/* شريط التحديث (v3.1) */
+.upd{background:var(--surface);border:1px solid color-mix(in srgb,var(--accent) 45%,var(--border));border-radius:14px;padding:12px 16px;margin-bottom:14px;box-shadow:var(--shadow);display:grid;gap:6px}
+.upd[hidden]{display:none}
+.upd-top{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+.upd-pct{font-size:20px;font-weight:800;color:var(--accent);font-variant-numeric:tabular-nums}
+.upd-bar{height:10px;background:var(--surface2);border-radius:999px;overflow:hidden}
+.upd-bar>i{display:block;height:100%;width:0;background:var(--accent);border-radius:999px;transition:width .6s ease}
+.upd.run .upd-bar>i{background-image:linear-gradient(90deg,transparent 0,rgba(255,255,255,.28) 50%,transparent 100%);background-size:200% 100%;animation:updShine 1.6s linear infinite}
+@keyframes updShine{from{background-position:200% 0}to{background-position:-200% 0}}
+@media (prefers-reduced-motion:reduce){.upd.run .upd-bar>i{animation:none}.upd-bar>i{transition:none}}
+.upd-msg{font-size:12.5px;color:var(--muted)}
+.upd.ok{border-color:color-mix(in srgb,var(--pos) 45%,var(--border))}
+.upd.ok .upd-pct{color:var(--pos)} .upd.ok .upd-bar>i{background:var(--pos)}
+.upd.bad{border-color:color-mix(in srgb,var(--warn) 55%,var(--border))}
+.upd.bad .upd-pct{color:var(--warn)} .upd.bad .upd-bar>i{background:var(--warn)}
+@media (max-width:700px){.hide-sm{display:none}.kpi .v{font-size:20px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1 dir="ltr" style="text-align:right"><span>WS</span> Stock Analyzer <span class="ver">v3.1</span></h1>
+      <div class="sub">الأسهم الحلال · البورصة المصرية</div>
+      <div class="sub" id="meta">جاري التحميل...</div>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button class="btn" id="themeBtn" title="الوضع الليلي/النهاري">◐</button>
+      <button class="btn" onclick="reloadData()">↻ إعادة قراءة البيانات</button>
+    </div>
+  </header>
+
+  <div id="upd" class="upd" hidden role="status" aria-live="polite">
+    <div class="upd-top"><b id="updTitle">جاري التحديث</b><span id="updPct" class="upd-pct"></span></div>
+    <div class="upd-bar"><i id="updFill"></i></div>
+    <div class="upd-msg" id="updMsg"></div>
+  </div>
+  <div id="errors"></div>
+  <div class="kpis" id="kpis"></div>
+
+  <div class="tabs" id="tabs">
+    <button class="tab on" data-t="rank">🏆 الترتيب العام</button>
+    <button class="tab" data-t="sector">🗂️ حسب القطاع</button>
+    <button class="tab" data-t="excluded">⛔ المستبعدة شرعياً</button>
+    <button class="tab" data-t="method">ℹ️ طريقة التقييم</button>
+    <button class="tab" data-t="news">📰 الأخبار</button>
+    <button class="tab" data-t="purif">🧮 نسب التطهير</button>
+    <button class="tab" data-t="eval">📊 مقارنة</button>
+    <button class="tab" data-t="evalmom">⚡ مقارنة زخم</button>
+  </div>
+
+  <div class="filters" id="filters">
+    <input type="search" id="q" placeholder="ابحث بالرمز أو الاسم...">
+    <select id="fSector"><option value="">كل القطاعات</option></select>
+    <select id="fSignal">
+      <option value="">كل التوصيات</option><option value="sb">شراء قوي</option><option value="b">شراء</option><option value="w">مراقبة</option><option value="a">تجنب</option>
+    </select>
+    <label class="note"><input type="checkbox" id="fFair"> بقيمة عادلة فقط</label>
+    <label class="note" title="زخم شراء 55 أو أكتر، أو اختراق بحجم"><input type="checkbox" id="fMom"> زخم شراء عالي</label>
+    <label class="note"><input type="checkbox" id="fDaily"> التغير اليومي</label>
+    <label class="note"><input type="checkbox" id="fSel"> المحددة فقط (<b id="selCount">0</b>)</label>
+    <button class="btn" id="clearSel" style="padding:4px 10px;font-size:12.5px">مسح التحديد</button>
+  </div>
+
+  <div id="view"></div>
+</div>
+
+<div class="drawer-bg" id="dbg" onclick="closeDrawer()"></div>
+<aside class="drawer" id="drawer"></aside>
+
+<!-- اختياري: محفظة جاهزة في ملف my-holdings.js بالشكل: window.MY_HOLDINGS = [ ... ]; -->
+<script src="my-holdings.js" charset="utf-8" onerror="void 0"></script>
+<script>
+const $ = s => document.querySelector(s);
+const fmt = (v, d = 2) => v == null || isNaN(v) ? '—' : Number(v).toLocaleString('en-US', {minimumFractionDigits: d, maximumFractionDigits: d});
+const pct = (v, d = 1) => v == null ? '—' : `<span class="${v >= 0 ? 'pos' : 'neg'}">${v >= 0 ? '+' : ''}${fmt(v, d)}%</span>`;
+const big = v => { if (v == null) return '—'; const a = Math.abs(v); return a >= 1e9 ? fmt(v/1e9,2)+' مليار' : a >= 1e6 ? fmt(v/1e6,1)+' مليون' : a >= 1e3 ? fmt(v/1e3,0)+' ألف' : fmt(v,0); };
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const signal = s => s >= 70 ? ['sb','شراء قوي'] : s >= 60 ? ['b','شراء'] : s >= 48 ? ['w','مراقبة'] : ['a','تجنب'];
+// ---- زخم الشراء (v3.1) ----
+const momLbl = {strong:['زخم قوي','p-sb'], pos:['زخم إيجابي','p-b'], neutral:['محايد','p-n'], weak:['ضعيف','p-a']};
+const momCell = m => !m ? '<span class="mut">—</span>' : (() => { const [l,c] = momLbl[m.label] || momLbl.neutral;
+  return `<span class="pill ${c}" title="${esc(l)}">${fmt(m.score,0)}</span>${m.breakout ? ' <span class="chg pos" title="اختراق قمة الشهر بحجم عالي">🚀 اختراق</span>' : ''}`; })();
+function momBox(m){
+  if (!m) return '';
+  const [l,c] = momLbl[m.label] || momLbl.neutral;
+  return `<div class="box"><h4>زخم الشراء <span class="pill ${c}">${fmt(m.score,0)} / 100 · ${l}</span>${m.breakout ? ' <span class="pill p-sb">🚀 اختراق قمة الشهر بحجم</span>' : ''}</h4>
+    ${(m.parts||[]).map(p => `<div class="chk"><span class="${p.pts >= p.max*0.6 ? 'pos' : p.pts > 0 ? '' : 'mut'}">${p.pts >= p.max*0.6 ? '▲' : p.pts > 0 ? '●' : '▼'}</span><span>${esc(p.name)} <span class="mut">${esc(p.detail)}</span></span><b>${fmt(p.pts,0)}/${p.max}</b></div>`).join('')}
+    <p class="note" style="margin:8px 0 0">بيقيس قوة الشراء دلوقتي: حجم أعلى من المتوسط مع صعود، وفلوس داخلة، وترند قوي. ≥70 زخم قوي · 55-70 إيجابي · 40-55 محايد. مؤشر مساعد ومش بيدخل في الترتيب، وما بيضمنش إن السهم هيعلى.</p></div>`;
+}
+const scoreColor = s =>s >= 70 ? '#0f8a4a' : s >= 60 ? '#3a9d5d' : s >= 48 ? '#b7791f' : '#c43c3c';
+const tvLabel = v => v == null ? ['—','mut'] : v > 0.5 ? ['شراء قوي','pos'] : v > 0.1 ? ['شراء','pos'] : v >= -0.1 ? ['محايد','mut'] : v >= -0.5 ? ['بيع','neg'] : ['بيع قوي','neg'];
+const verdictAr = {compliant:'متوافق', no_loans:'بدون قروض ربوية', doubtful:'مشكوك فيه', non_compliant:'غير متوافق', not_screened:'غير مدرج في الفحص الشرعي'};
+
+let D = null, tab = 'rank', sortKey = 'score', sortDir = -1;
+try { const t = localStorage.getItem('egx-tab'); if (t) tab = t; } catch(e){}
+
+function nextRun(){
+  const now = new Date(), slots = [[12,0],[14,45]];
+  for (let add = 0; add < 8; add++){
+    const d = new Date(now); d.setDate(d.getDate()+add);
+    if (d.getDay() === 5 || d.getDay() === 6) continue; // الجمعة والسبت
+    for (const [h,m] of slots){ const x = new Date(d); x.setHours(h,m,0,0); if (x > now) return x; }
+  }
+}
+
+function render(){
+  D = window.EGX_DATA;
+  if (!D){ $('#view').innerHTML = '<div class="card empty">لا توجد بيانات بعد — شغّل التحديث (update.ps1).</div>'; return; }
+  const gen = new Date(D.generatedAt), nr = nextRun();
+  const pxAt = D.pricesAt && new Date(D.pricesAt) > gen ? new Date(D.pricesAt) : null;
+  $('#meta').innerHTML = `آخر تحديث: <b>${gen.toLocaleString('ar-EG',{weekday:'long',hour:'2-digit',minute:'2-digit',day:'numeric',month:'long'})}</b>` +
+    (pxAt ? ` · الأسعار محدثة: <b>${pxAt.toLocaleString('ar-EG',{weekday:'long',hour:'2-digit',minute:'2-digit'})}</b>` : '') +
+    (nr ? ` · التحديث القادم: ${nr.toLocaleString('ar-EG',{weekday:'long',hour:'2-digit',minute:'2-digit'})}` : '');
+  $('#errors').innerHTML = D.errors && D.errors.length ? `<div class="err"><b>تنبيهات أثناء التحديث (${D.errors.length}):</b><br>${D.errors.slice(0,6).map(esc).join('<br>')}</div>` : '';
+  const top = D.stocks[0];
+  $('#kpis').innerHTML = `
+    <div class="kpi"><div class="l">أسهم البورصة</div><div class="v">${D.counts.market}</div></div>
+    <div class="kpi"><div class="l">متوافقة شرعياً (تم تحليلها)</div><div class="v">${D.counts.kept} <small>/ ${D.counts.market}</small></div></div>
+    <div class="kpi"><div class="l">لها قيمة عادلة</div><div class="v">${D.counts.withFair}</div></div>
+    <div class="kpi"><div class="l">إشارات شراء</div><div class="v">${D.stocks.filter(s=>s.score>=60).length}</div></div>
+    <div class="kpi"><div class="l">الأفضل الآن</div><div class="v" style="cursor:pointer" onclick="openDrawer('${top?.symbol}')">${top ? top.symbol : '—'} <small>${top ? fmt(top.score,1) : ''}</small></div></div>`;
+  const sel = $('#fSector'), cur = sel.value;
+  const secs = [...new Set(D.stocks.map(s=>s.sector))].sort((a,b)=>a.localeCompare(b,'ar'));
+  sel.innerHTML = '<option value="">كل القطاعات</option>' + secs.map(s=>`<option ${s===cur?'selected':''}>${esc(s)}</option>`).join('');
+  document.querySelectorAll('.tab').forEach(b => b.classList.toggle('on', b.dataset.t === tab));
+  $('#filters').style.display = (tab === 'method' || tab === 'purif' || tab === 'eval' || tab === 'evalmom') ? 'none' : 'flex';
+  if (!document.querySelector(`.tab[data-t="${tab}"]`)) tab = 'rank';   // تاب اتشال (زي تغير المراكز)
+  document.querySelectorAll('.tab').forEach(b => b.classList.toggle('on', b.dataset.t === tab));
+  (({rank:renderRank, sector:renderSectors, excluded:renderExcluded, method:renderMethod, news:renderNews, purif:renderPurif, eval:() => renderEval('rank'), evalmom:() => renderEval('mom')})[tab] || renderRank)();
+}
+
+function filtered(){
+  const q = $('#q').value.trim().toLowerCase(), sec = $('#fSector').value, sig = $('#fSignal').value, fair = $('#fFair').checked, only = $('#fSel').checked, mom = $('#fMom').checked;
+  return D.stocks.filter(s =>
+    (!only || picked.has(s.symbol)) && (!q || s.symbol.toLowerCase().includes(q) || (s.name||'').toLowerCase().includes(q) || (s.nameEn||'').toLowerCase().includes(q)) &&
+    (!sec || s.sector === sec) && (!sig || signal(s.score)[0] === sig) && (!fair || (s.fair && s.fair.upside != null)) &&
+    (!mom || (s.momentum && (s.momentum.score >= 55 || s.momentum.breakout))));
+}
+
+const getters = {
+  rank: s=>s.rank, symbol: s=>s.symbol, sector: s=>s.sector, price: s=>s.price, change: s=>s.change,
+  d0: s=>dayVal(s,0) ?? -999, d1: s=>dayVal(s,1) ?? -999, d2: s=>dayVal(s,2) ?? -999, d3: s=>dayVal(s,3) ?? -999, d4: s=>dayVal(s,4) ?? -999,
+  analyst: s=>s.fair?.analystUpside ?? -999, shariah: s=>s.shariah.compliantSources,
+  perf1M: s=>s.perf1M ?? -999, perf6M: s=>s.perf6M ?? -999, perfY: s=>s.perfY ?? -999,
+  upside: s=>s.fair?.upside ?? -999, tech: s=>s.scores.tech, mom: s=>s.momentum?.score ?? -1, value: s=>s.scores.value ?? -1, score: s=>s.score, liq: s=>s.tradedValue
+};
+function sortBy(k){ if (sortKey === k) sortDir *= -1; else { sortKey = k; sortDir = (k==='symbol'||k==='sector'||k==='rank') ? 1 : -1; } render(); }
+
+// ---- التغير اليومي: آخر 5 جلسات. أول ما جلسة جديدة تبدأ (10 الصبح، الأحد-الخميس) بتتضاف أول عمود
+//      وأقدم جلسة تتشال، حتى لو لسه ما حصلش تحديث النهارده (العمود يبان "—" لحد تحديث 12)
+const localDate = (x = new Date()) => `${x.getFullYear()}-${String(x.getMonth()+1).padStart(2,'0')}-${String(x.getDate()).padStart(2,'0')}`;
+function dayShift(){
+  const days = D.days || [], now = new Date();
+  const open = now.getDay() !== 5 && now.getDay() !== 6 && now.getHours() >= 10;
+  return open && days.length > 0 && days[0] < localDate(now);
+}
+const shownDays = () => dayShift() ? [localDate(), ...(D.days || []).slice(0, 4)] : (D.days || []);
+const dayVal = (s, i) => dayShift() ? (i === 0 ? null : s.daily?.[i-1]) : s.daily?.[i];
+const dayName = d =>new Date(d+'T12:00:00').toLocaleDateString('ar-EG',{weekday:'long'});
+const dayDate = d => new Date(d+'T12:00:00').toLocaleDateString('ar-EG',{day:'numeric',month:'numeric'});
+
+// ---- تحديد الأسهم (يتحفظ في المتصفح) ----
+let picked = new Set();
+try { picked = new Set(JSON.parse(localStorage.getItem('egx-picked') || '[]')); } catch(e){}
+function savePicked(){ try{ localStorage.setItem('egx-picked', JSON.stringify([...picked])); }catch(e){}; $('#selCount').textContent = picked.size; }
+function togglePick(sym, on){
+  on ? picked.add(sym) : picked.delete(sym); savePicked();
+  document.querySelectorAll(`[data-row="${sym}"]`).forEach(r => r.classList.toggle('picked', on));
+  if ($('#fSel').checked) render();
+}
+function pickAll(on){ filtered().forEach(s => on ? picked.add(s.symbol) : picked.delete(s.symbol)); savePicked(); render(); }
+const pickBox = s => `<input type="checkbox" ${picked.has(s.symbol)?'checked':''} onclick="event.stopPropagation()" onchange="togglePick('${s.symbol}',this.checked)" title="تحديد">`;
+
+function rankChange(s){
+  if (s.prevRank == null) return '';
+  const d = s.prevRank - s.rank;
+  return d === 0 ? '' : `<span class="chg ${d>0?'pos':'neg'}">${d>0?'▲':'▼'}${Math.abs(d)}</span>`;
+}
+
+function renderRank(){
+  const g = getters[sortKey];
+  const rows = filtered().sort((a,b)=>{ const x=g(a), y=g(b); return (typeof x==='string' ? x.localeCompare(y,'ar') : x-y) * sortDir; });
+  const th = (k,l,c='') => `<th class="${c}" onclick="sortBy('${k}')">${l}${sortKey===k?(sortDir>0?' ▲':' ▼'):''}</th>`;
+  const showDaily = $('#fDaily').checked, days = shownDays();
+  const allPicked = rows.length && rows.every(s => picked.has(s.symbol));
+  const dailyTh = showDaily
+    ? days.map((d,i)=>th('d'+i, `${dayName(d)}<span class="dd">${dayDate(d)}</span>`, 'grp')).join('') + th('perf1M','الشهر','grp') + th('perf6M','6 شهور','grp') + th('perfY','السنة','grp')
+    : th('change','اليوم');
+  const dailyTd = s => showDaily
+    ? days.map((d,i)=>`<td class="grp">${pct(dayVal(s,i),1)}</td>`).join('') + `<td class="grp">${pct(s.perf1M)}</td><td class="grp">${pct(s.perf6M)}</td><td class="grp">${pct(s.perfY)}</td>`
+    : `<td>${pct(s.change,2)}</td>`;
+  $('#view').innerHTML = rows.length ? `<div class="card scroll"><table class="tbl ${showDaily?'compact':''}"><thead><tr>
+    <th class="sel-cell"><input type="checkbox" ${allPicked?'checked':''} onclick="event.stopPropagation()" onchange="pickAll(this.checked)" title="تحديد الكل"></th>
+    ${th('rank','#')}${th('symbol','السهم')}${showDaily ? '' : th('sector','القطاع','hide-sm')}${th('price','السعر')}${dailyTh}
+    <th class="hide-sm">القيمة العادلة</th>${th('upside','الصعود المتوقع')}${th('analyst','هدف المحللين')}${th('tech','الفني')}${th('mom','زخم الشراء')}${th('value','التقييم','hide-sm')}${th('score','الدرجة')}<th>التوصية</th>
+  </tr></thead><tbody>${rows.map(s=>{ const [sc,sl]=signal(s.score); const tl=tvLabel(s.tech.tf.d1); return `<tr class="row ${picked.has(s.symbol)?'picked':''}" data-row="${s.symbol}" onclick="openDrawer('${s.symbol}')">
+    <td class="sel-cell" onclick="event.stopPropagation()">${pickBox(s)}</td>
+    <td><span class="rk">${s.rank}</span> ${rankChange(s)}</td>
+    <td><div class="sym">${s.symbol}</div><div class="nm">${esc(s.name)}</div></td>
+    ${showDaily ? '' : `<td class="hide-sm mut">${esc(s.sector)}</td>`}
+    <td>${fmt(s.price, s.price<10?3:2)}</td>
+    ${dailyTd(s)}
+    <td class="hide-sm">${s.fair?.value ? fmt(s.fair.value, s.fair.value<10?3:2) : '<span class="mut">—</span>'}</td>
+    <td>${pct(s.fair?.upside)}</td>
+    <td>${s.fair?.analyst ? `${fmt(s.fair.analyst, s.fair.analyst<10?3:2)} <span class="chg">${pct(s.fair.analystUpside)}</span>` : '<span class="mut">—</span>'}</td>    <td><div class="bar" title="${fmt(s.scores.tech,0)}"><i style="width:${s.scores.tech}%"></i></div><span class="chg ${tl[1]}">${tl[0]}</span></td>
+    <td>${momCell(s.momentum)}</td>
+    <td class="hide-sm">${s.scores.value==null?'<span class="mut">—</span>':fmt(s.scores.value,0)}</td>
+    <td><span class="score" style="background:${scoreColor(s.score)}">${fmt(s.score,1)}</span></td>
+    <td><span class="pill p-${sc}">${sl}</span></td></tr>`;}).join('')}</tbody></table></div>`
+    : '<div class="card empty">لا توجد نتائج مطابقة للفلاتر.</div>';
+}
+
+function renderSectors(){
+  const groups = {};
+  filtered().forEach(s => (groups[s.sector] ||= []).push(s));
+  const arr = Object.entries(groups).map(([k,v]) => [k, v.sort((a,b)=>b.score-a.score)]).sort((a,b)=> b[1][0].score - a[1][0].score);
+  $('#view').innerHTML = arr.length ? `<div class="sectors">${arr.map(([sec,list])=>`<div class="card sec">
+    <h3><span>${esc(sec)}</span><span class="mut" style="font-size:12px">${list.length} سهم · متوسط ${fmt(list.reduce((a,s)=>a+s.score,0)/list.length,0)}</span></h3>
+    ${list.map(s=>{const [sc,sl]=signal(s.score);return `<div class="it" onclick="openDrawer('${s.symbol}')">
+      <span onclick="event.stopPropagation()">${pickBox(s)}</span>
+      <span class="rk" style="min-width:22px">${s.sectorRank}</span>
+      <div class="grow"><div class="sym">${s.symbol} <span class="mut" style="font-weight:400">#${s.rank}</span></div><div class="nm">${esc(s.name)}</div></div>
+      <div style="text-align:left">${pct(s.fair?.upside)}<br><span class="pill p-${sc}">${sl}</span></div>
+      <span class="score" style="background:${scoreColor(s.score)}">${fmt(s.score,0)}</span></div>`}).join('')}
+  </div>`).join('')}</div>` : '<div class="card empty">لا توجد نتائج.</div>';
+}
+
+function renderExcluded(){
+  const q = $('#q').value.trim().toLowerCase();
+  const rows = D.excluded.filter(s => !q || s.symbol.toLowerCase().includes(q) || (s.name||'').toLowerCase().includes(q));
+  const by = {}; rows.forEach(r => by[r.reason] = (by[r.reason]||0)+1);
+  $('#view').innerHTML = `<p class="note">${Object.entries(by).map(([k,v])=>`${verdictAr[k]||k}: <b>${v}</b>`).join(' · ')}</p>
+  <div class="card scroll"><table class="tbl"><thead><tr><th>السهم</th><th>الاسم</th><th class="hide-sm">القطاع</th><th>سبب الاستبعاد</th></tr></thead><tbody>
+  ${rows.map(r=>`<tr><td class="sym">${r.symbol}</td><td class="nm" style="max-width:320px">${esc(r.name)}</td><td class="hide-sm mut">${esc(r.sector)}</td>
+  <td><span class="pill ${r.reason==='doubtful'?'p-w':r.reason==='not_screened'?'':'p-a'}">${verdictAr[r.reason]||r.reason}</span></td></tr>`).join('')}
+  </tbody></table></div>`;
+}
+
+// ---------- الفحص الشرعي لكل قائمة ----------
+const srcAr = {compliant:'متوافق', non_compliant:'غير متوافق', doubtful:'مشكوك فيه', no_loans:'بدون قروض ربوية', not_checked:'لم يفحص بعد'};
+const srcCls = {compliant:'pos', no_loans:'pos', non_compliant:'neg', doubtful:'', not_checked:'mut'};
+const srcIcon = {compliant:'<span class="pos">✓</span>', no_loans:'<span class="pos">✓</span>', non_compliant:'<span class="neg">✗</span>', doubtful:'<span style="color:var(--warn)">؟</span>', not_checked:'<span class="mut">–</span>'};
+const srcOrder = {compliant:0, no_loans:1, doubtful:2, non_compliant:3, not_checked:4};
+const shariahTip = s => (s.shariah.sources||[]).filter(x=>x.status!=='not_checked').map(x=>`${x.name}: ${srcAr[x.status]||x.status}`).join('\n');
+
+// ---------- الأخبار ----------
+const newsLbl = {strong_pos:['إيجابي قوي','p-sb'], pos:['إيجابي','p-b'], neutral:['محايد','p-n'], neg:['سلبي','p-a'], strong_neg:['سلبي قوي','p-a']};
+const newsCat = {results:'نتائج أعمال', dividend:'توزيعات', deal:'صفقات وتوسعات', capital:'رأس المال', rating:'تصنيف وتقييم', risk:'مخاطر وقضايا', general:'عام'};
+const ago = iso => { const m = (Date.now() - new Date(iso)) / 60000; return m < 60 ? `منذ ${Math.max(1,Math.round(m))} دقيقة` : m < 1440 ? `منذ ${Math.round(m/60)} ساعة` : `منذ ${Math.round(m/1440)} يوم`; };
+function newsCard(n, showStock = true){
+  const [l,c] = newsLbl[n.label] || newsLbl.neutral;
+  const why = [n.pos?.length ? `<span class="pos">+ ${n.pos.map(esc).join('، ')}</span>` : '', n.neg?.length ? `<span class="neg">− ${n.neg.map(esc).join('، ')}</span>` : ''].filter(Boolean).join(' · ');
+  return `<div class="news-it">
+    <div class="news-top">${showStock ? `<span class="chip" onclick="openDrawer('${n.symbol}')">${n.symbol}</span><span class="mut nm" style="max-width:180px">${esc(n.name)}</span>` : ''}
+      <span class="pill ${c}">${l}</span><span class="pill p-n">${newsCat[n.category]||'عام'}</span>
+      <span class="mut" style="margin-inline-start:auto;font-size:12px">${esc(n.source||'')} · ${ago(n.published)}</span></div>
+    <a class="news-t" href="${esc(n.url)}" target="_blank" ${n.lang==='en'?'dir="ltr"':''}>${esc(n.title)}</a>
+    <div class="news-b">${why ? `<span>سبب التقييم: ${why}</span>` : '<span class="mut">لا توجد كلمات مؤثرة واضحة في العنوان</span>'}
+      ${n.reaction ? `<span>رد فعل السهم (${dayDate(n.reaction.date)}): ${pct(n.reaction.pct,2)}</span>` : '<span class="mut">رد فعل السهم: لم يُتداول بعد</span>'}</div>
+  </div>`;
+}
+function newsForStock(s){
+  const list = (D.news||[]).filter(n=>n.symbol===s.symbol).slice(0,6);
+  return `<div class="box"><h4>آخر الأخبار ${s.news ? `<span class="mut" style="font-weight:400">— ${s.news.count} خبر خلال 14 يوم · مؤشر الأخبار (7 أيام): ${s.news.score7>0?'+':''}${fmt(s.news.score7,1)}</span>` : ''}</h4>
+    ${list.length ? list.map(n=>newsCard(n,false)).join('') : '<span class="note">لا توجد أخبار خلال آخر 14 يوم.</span>'}</div>`;
+}
+function renderNews(){
+  const syms = new Set(filtered().map(s=>s.symbol));
+  const fl = $('#nLabel')?.value || '', fc = $('#nCat')?.value || '';
+  const all = (D.news||[]).filter(n => syms.has(n.symbol));
+  const list = all.filter(n => (!fl || (fl==='pos' ? n.score>=1 : fl==='neg' ? n.score<=-1 : n.label==='neutral')) && (!fc || n.category===fc));
+  const posN = all.filter(n=>n.score>=1).length, negN = all.filter(n=>n.score<=-1).length;
+  const ranked = D.stocks.filter(s=>syms.has(s.symbol) && s.news && s.news.count7).sort((a,b)=>b.news.score7-a.news.score7);
+  const chipList = arr => arr.map(s=>`<span class="chip" onclick="openDrawer('${s.symbol}')">${s.symbol} <b class="${s.news.score7>=0?'pos':'neg'}">${s.news.score7>0?'+':''}${fmt(s.news.score7,1)}</b></span>`).join(' ') || '<span class="mut">—</span>';
+  const groups = {};
+  list.forEach(n => { const d = new Date(n.published).toLocaleDateString('ar-EG',{weekday:'long',day:'numeric',month:'long'}); (groups[d] ||= []).push(n); });
+  $('#view').innerHTML = `
+  <div class="kpis" style="margin-bottom:12px">
+    <div class="kpi"><div class="l">أخبار آخر 14 يوم</div><div class="v">${all.length}</div></div>
+    <div class="kpi"><div class="l">إيجابية / سلبية</div><div class="v"><span class="pos">${posN}</span> <small>/</small> <span class="neg">${negN}</span></div></div>
+    <div class="kpi" style="grid-column:span 2"><div class="l">الأكثر إيجابية في الأخبار (7 أيام)</div><div style="margin-top:6px">${chipList(ranked.filter(s=>s.news.score7>0).slice(0,6))}</div></div>
+    <div class="kpi" style="grid-column:span 2"><div class="l">الأكثر سلبية في الأخبار (7 أيام)</div><div style="margin-top:6px">${chipList(ranked.filter(s=>s.news.score7<0).reverse().slice(0,6))}</div></div>
+  </div>
+  <div class="filters">
+    <select id="nLabel" onchange="render()"><option value="">كل التأثيرات</option><option value="pos" ${fl==='pos'?'selected':''}>إيجابي</option><option value="neg" ${fl==='neg'?'selected':''}>سلبي</option><option value="neutral" ${fl==='neutral'?'selected':''}>محايد</option></select>
+    <select id="nCat" onchange="render()"><option value="">كل الأنواع</option>${Object.entries(newsCat).map(([k,v])=>`<option value="${k}" ${fc===k?'selected':''}>${v}</option>`).join('')}</select>
+    <span class="note">آخر تحديث للأخبار: ${D.newsFetchedAt ? new Date(D.newsFetchedAt).toLocaleString('ar-EG',{weekday:'long',hour:'2-digit',minute:'2-digit'}) : '—'} · الأخبار بتتحذف بعد 14 يوم</span>
+  </div>
+  ${list.length ? Object.entries(groups).map(([d,arr])=>`<h3 class="news-day">${d} <span class="mut">(${arr.length})</span></h3><div class="card">${arr.map(n=>newsCard(n)).join('')}</div>`).join('')
+    : '<div class="card empty">لا توجد أخبار مطابقة.</div>'}
+  <p class="note">⚠️ تقييم وقع الخبر آلي، بيعتمد على الكلمات المالية في العنوان (أرباح، خسائر، توزيعات، صفقات...) ومعاه رد فعل سعر السهم في أول جلسة بعد الخبر. ده مؤشر مساعد، اقرأ الخبر نفسه قبل ما تاخد قرار.</p>`;
+}
+
+// ---------- نسب التطهير ----------
+let holdings = null;
+function loadHoldings(){
+  if (holdings) return holdings;
+  try { const s = localStorage.getItem('egx-holdings'); if (s) holdings = JSON.parse(s); } catch(e){}
+  if (!holdings) holdings = [];
+  return holdings;   // العمليات اللي اتضافت يدوي بس
+}
+// كل العمليات = اللي جاية من ملف ثندر (بتتحدث مع كل تحديث) + اليدوي
+const allHoldings = () => [...(Array.isArray(window.MY_HOLDINGS) ? window.MY_HOLDINGS : []), ...loadHoldings()];
+function saveHoldings(){ try{ localStorage.setItem('egx-holdings', JSON.stringify(holdings)); }catch(e){} }
+const daysBetween = (a,b) => Math.max(1, Math.round((new Date(b+'T12:00:00') - new Date(a+'T12:00:00')) / 86400000));
+const todayStr = () => new Date().toISOString().slice(0,10);
+const money = v => v == null || isNaN(v) ? '—' : fmt(v, 2) + ' ج';
+
+function calcHolding(h){
+  const P = (D.purif||{})[h.sym] || {};
+  const open = !h.sellDate;
+  const endDate = h.sellDate || todayStr();
+  const endPrice = h.sellPrice != null && h.sellPrice !== '' ? +h.sellPrice : P.price;
+  const days = h.buyDate ? daysBetween(h.buyDate, endDate) : null;
+  const gain = endPrice != null && h.buyPrice != null ? h.qty * (endPrice - h.buyPrice) : null;
+  // v2.1: اللي لسه معاك أو اتباع بخسارة مش بيدخل الحساب خالص
+  const skip = open ? 'open' : (gain == null || gain <= 0) ? 'loss' : null;
+  const base = skip ? 0 : gain + (+h.divs || 0);
+  // السهم غير الشرعي اللي اتباع بمكسب: المكسب كله يطلع تطهير
+  const kNC = P.kStatus === 'non_compliant', hNC = P.verdict === 'non_compliant';
+  return { P, open, skip, kNC, hNC, endDate, endPrice, days, gain, base,
+    kAmt: skip ? 0 : kNC ? base : P.k != null ? base * P.k / 100 : null,
+    hAmt: skip ? 0 : hNC ? base : P.h != null ? base * P.h / 100 : null,
+    aAmt: skip ? 0 : hNC ? base : P.aaoifi != null && days ? h.qty * P.aaoifi * days / 365 : null };
+}
+
+function addHolding(){
+  const sym = ($('#hSym').value.split(' ')[0] || '').trim().toUpperCase();
+  const h = { id: Date.now(), sym, qty: +$('#hQty').value, buyDate: $('#hBuyD').value, buyPrice: +$('#hBuyP').value,
+              sellDate: $('#hSellD').value || '', sellPrice: $('#hSellP').value === '' ? '' : +$('#hSellP').value, divs: +$('#hDiv').value || 0 };
+  const err = !D.purif?.[sym] ? 'اختار سهم من القائمة' : !(h.qty > 0) ? 'اكتب عدد الأسهم' : !h.buyDate ? 'اختار تاريخ الشراء' : !(h.buyPrice > 0) ? 'اكتب سعر الشراء'
+            : (h.sellDate && h.sellDate < h.buyDate) ? 'تاريخ البيع قبل تاريخ الشراء' : (h.sellDate && !(h.sellPrice > 0)) ? 'اكتب سعر البيع' : '';
+  if (err) { $('#hErr').textContent = err; return; }
+  loadHoldings().push(h); saveHoldings(); render();
+}
+function delHolding(id){ holdings = loadHoldings().filter(h => h.id !== id); saveHoldings(); render(); }
+function exportHoldings(){
+  const blob = new Blob([JSON.stringify(loadHoldings(), null, 2)], {type:'application/json'});
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'my-holdings.json'; a.click();
+}
+function importHoldings(input){
+  const f = input.files[0]; if (!f) return;
+  f.text().then(t => { try { const arr = JSON.parse(t); if (Array.isArray(arr)) { holdings = arr; saveHoldings(); render(); } } catch(e){ alert('الملف مش صحيح'); } });
+}
+
+function renderPurif(){
+  const P = D.purif || {}, H = allHoldings();
+  const all = H.map(h => ({h, c: calcHolding(h)}));
+  const rows = all.filter(r => !r.c.skip)
+    .sort((a,b) => (b.c.endDate > a.c.endDate ? 1 : b.c.endDate < a.c.endDate ? -1 : 0));
+  const nOpen = all.filter(r => r.c.skip === 'open').length, nLoss = all.filter(r => r.c.skip === 'loss').length;
+  const info = window.MY_HOLDINGS_INFO;
+  const tot = k => rows.reduce((a,r) => a + (r.c[k] || 0), 0);
+  const ncTag = t => `<div class="neg" style="font-size:11.5px;white-space:normal;max-width:200px">⚠ غير شرعي حسب ${t} ← المكسب كله</div>`;
+  const kWarn = c => c.kNC ? ncTag('كاشف') : '';
+  const q = ($('#pQ')?.value || '').trim().toLowerCase(), onlyOk = $('#pOk') ? $('#pOk').checked : true;
+  const ref = Object.entries(P).filter(([s,p]) => (!onlyOk || ['compliant','no_loans'].includes(p.verdict)) && (!q || s.toLowerCase().includes(q) || (p.name||'').toLowerCase().includes(q)));
+  const prc = v => v == null ? '<span class="mut">—</span>' : fmt(v, v < 1 ? 3 : 2) + '%';
+  $('#view').innerHTML = `
+  <div class="card box" style="margin-bottom:14px">
+    <h4>محفظتي — حساب مبلغ التطهير</h4>
+    ${info && (Date.now() - new Date(info.modified.replace(' ','T'))) / 86400000 > 7 ? `<div class="err">⏰ ملف ثندر عمره أكتر من أسبوع (${esc(info.modified)}). صدّر ملف جديد من ثندر وحطه في فولدر <b>thndr</b> عشان عمليات الأسبوع ده تتحسب.</div>` : ''}
+    <p class="note" style="margin:0 0 8px">${info ? `📥 من ثندر: <b>${esc(info.file)}</b> (${info.closed} عملية اتباعت + ${info.open} لسه معاك) · آخر تعديل للملف ${esc(info.modified)}. عشان تحدّثها: صدّر ملف جديد من ثندر وحطه في فولدر <b>thndr</b> جوه فولدر البوت، وهيتقري مع التحديث الجاي.`
+      : 'مفيش ملف ثندر. حط ملف Excel بعملياتك في فولدر <b>thndr</b> جوه فولدر البوت، أو ضيف العمليات يدوي هنا.'}</p>
+    <div class="hform">
+      <label>السهم<input id="hSym" list="hSymList" placeholder="اكتب الرمز أو الاسم"></label>
+      <datalist id="hSymList">${Object.entries(P).map(([s,p])=>`<option value="${s} — ${esc(p.name)}">`).join('')}</datalist>
+      <label>عدد الأسهم<input id="hQty" type="number" min="1" step="1"></label>
+      <label>تاريخ الشراء<input id="hBuyD" type="date"></label>
+      <label>سعر الشراء<input id="hBuyP" type="number" min="0" step="0.001"></label>
+      <label>تاريخ البيع <span class="mut">(فاضي = لسه معايا)</span><input id="hSellD" type="date"></label>
+      <label>سعر البيع <span class="mut">(فاضي = سعر النهارده)</span><input id="hSellP" type="number" min="0" step="0.001"></label>
+      <label>توزيعات نقدية استلمتها <span class="mut">(ج، اختياري)</span><input id="hDiv" type="number" min="0" step="0.01"></label>
+      <button class="btn" style="background:var(--accent);color:#fff;border-color:var(--accent);align-self:end" onclick="addHolding()">+ إضافة</button>
+    </div>
+    <div id="hErr" class="neg" style="font-size:12.5px;min-height:18px"></div>
+    <p class="note" style="margin:0 0 8px">✅ داخل الحساب: <b>${rows.length}</b> عملية اتباعت بمكسب · مش داخل الحساب: <b>${nLoss}</b> عملية اتباعت بخسارة و <b>${nOpen}</b> لسه معاك (مش متباعة).</p>
+    ${rows.length ? `<div class="scroll"><table class="tbl ptbl"><thead><tr>
+      <th>السهم</th><th>الكمية</th><th>الشراء</th><th>البيع</th><th>الأيام</th><th>الربح/الخسارة</th><th>التوزيعات</th>
+      <th class="grp">نسبة كاشف</th><th class="grp">تطهير كاشف</th><th class="grp2">نسبة اسهم حلال</th><th class="grp2">تطهير اسهم حلال</th><th class="grp2">AAOIFI (حسب الأيام)</th><th></th>
+    </tr></thead><tbody>${rows.map(({h,c})=>`<tr>
+      <td><div class="sym">${h.sym}</div><div class="nm">${esc(c.P.name||'')}</div></td>
+      <td>${fmt(h.qty,0)}</td>
+      <td>${fmt(h.buyPrice,2)}<div class="nm">${h.buyDate}</div></td>
+      <td>${c.endPrice!=null?fmt(c.endPrice,2):'—'}<div class="nm">${c.open?'لسه معايا (سعر النهارده)':h.sellDate}</div></td>
+      <td>${c.days ?? '—'}</td>
+      <td>${c.gain==null?'—':`<span class="${c.gain>=0?'pos':'neg'}">${money(c.gain)}</span>`}</td>
+      <td>${h.divs?money(h.divs):'<span class="mut">—</span>'}</td>
+      <td class="grp">${prc(c.P.k)}<div class="nm">${esc(c.P.kGrade||'')}</div></td>
+      <td class="grp"><b>${money(c.kAmt)}</b>${kWarn(c)}</td>
+      <td class="grp2">${prc(c.P.h)}</td>
+      <td class="grp2"><b>${money(c.hAmt)}</b>${c.hNC ? ncTag('اسهم حلال') : ''}</td>
+      <td class="grp2">${money(c.aAmt)}<div class="nm">${c.P.aaoifi!=null?fmt(c.P.aaoifi,5)+' ج/سهم/سنة':''}</div></td>
+      <td>${h.src === 'thndr' ? '<span class="pill p-n" title="من ملف ثندر">ثندر</span>' : `<button class="btn" style="padding:2px 8px" onclick="delHolding(${h.id})" title="حذف">✕</button>`}</td></tr>`).join('')}
+      <tr class="totrow"><td colspan="5"><b>الإجمالي</b></td><td>${money(tot('gain'))}</td><td>${money(rows.reduce((a,r)=>a+(+r.h.divs||0),0))}</td>
+        <td class="grp"></td><td class="grp"><b>${money(tot('kAmt'))}</b></td><td class="grp2"></td><td class="grp2"><b>${money(tot('hAmt'))}</b></td><td class="grp2"><b>${money(tot('aAmt'))}</b></td><td></td></tr>
+    </tbody></table></div>
+    <div class="paid">
+      <label>المبلغ اللي طلّعته من التطهير لحد دلوقتي (جنيه)
+        <input id="paidIn" type="number" min="0" step="0.01" value="${getPaid() || ''}" placeholder="0" oninput="setPaid(this.value)"></label>
+    </div>
+    <div class="kpis" style="margin-top:12px" id="purifKpis">${purifKpis(tot)}</div>` : '<p class="note">لسه ما ضفتش أسهم. اكتب بيانات كل عملية شراء فوق واضغط "إضافة".</p>'}
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+      <button class="btn" onclick="exportHoldings()">⬇ حفظ المحفظة كملف</button>
+      <label class="btn">⬆ تحميل محفظة من ملف<input type="file" accept=".json" style="display:none" onchange="importHoldings(this)"></label>
+    </div>
+    <p class="note" style="margin-top:10px"><b>طريقة الحساب:</b>
+      <br>• بيتحسب بس الأسهم اللي <b>اتباعت بمكسب</b>. اللي لسه معاك واللي اتباع بخسارة (شرعي أو لا) مش بيدخل الحساب.
+      <br>• <b>سهم شرعي اتباع بمكسب:</b> مبلغ التطهير = (المكسب + التوزيعات النقدية) × نسبة التطهير الخاصة بالسهم.
+      <br>• <b>سهم غير شرعي اتباع بمكسب:</b> المكسب كله + التوزيعات بيطلع تطهير. كل عمود بيحكم بالموقع بتاعه: كاشف بحكم كاشف، واسهم حلال و AAOIFI بالحكم الإجمالي في اسهم حلال.
+      <br>• <b>AAOIFI حسب الأيام</b> (من اسهم حلال): نصيب السهم من الإيراد المحرم × عدد الأسهم × (أيام الاحتفاظ ÷ 365).
+      <br>• نسب كاشف مأخوذة من أرقامه المنشورة على موقع اسهم حلال، لأن موقع كاشف بيقفل نسبة التطهير على الأعضاء المسجلين بس.
+      <br>• المحفظة بتتحفظ في المتصفح ده بس. استخدم "حفظ المحفظة كملف" عشان تاخد نسخة.</p>
+  </div>
+  <div class="card box">
+    <h4>نسب التطهير لكل سهم</h4>
+    <div class="filters" style="position:static;padding:0">
+      <input type="search" id="pQ" placeholder="ابحث بالرمز أو الاسم..." value="${esc(q)}" oninput="renderPurifKeepFocus()">
+      <label class="note"><input type="checkbox" id="pOk" ${onlyOk?'checked':''} onchange="render()"> المتوافقة شرعياً فقط</label>
+      <span class="note">${ref.length} سهم</span>
+    </div>
+    <div class="scroll"><table class="tbl ptbl"><thead><tr><th>السهم</th><th>القطاع</th><th>الحكم الإجمالي</th>
+      <th class="grp">كاشف: نسبة التطهير</th><th class="grp">كاشف: درجة النقاء</th><th class="grp">كاشف: الحكم</th><th class="grp">تاريخ القوائم</th>
+      <th class="grp2">اسهم حلال: نسبة التطهير</th><th class="grp2">AAOIFI ج/سهم</th><th class="grp2">القروض الربوية</th></tr></thead>
+    <tbody>${ref.map(([s,p])=>`<tr><td><div class="sym">${s}</div><div class="nm">${esc(p.name||'')}</div></td><td class="mut">${esc(p.sector||'')}</td>
+      <td><span class="${srcCls[p.verdict]||''}">${verdictAr[p.verdict]||'—'}</span></td>
+      <td class="grp"><b>${prc(p.k)}</b></td><td class="grp">${esc(p.kGrade||'—')}</td><td class="grp"><span class="${srcCls[p.kStatus]||'mut'}">${srcAr[p.kStatus]||'—'}</span></td><td class="grp mut">${p.kDate||'—'}</td>
+      <td class="grp2"><b>${prc(p.h)}</b></td><td class="grp2">${p.aaoifi!=null?fmt(p.aaoifi,5):'—'}</td><td class="grp2">${prc(p.loans)}</td></tr>`).join('')}</tbody></table></div>
+  </div>`;
+}
+// المبلغ المدفوع من التطهير (يتحفظ في المتصفح) والباقي لكل طريقة
+function getPaid(){ try { return +(localStorage.getItem('egx-paid') || 0); } catch(e){ return 0; } }
+function setPaid(v){
+  try { localStorage.setItem('egx-paid', String(+v || 0)); } catch(e){}
+  const rows = allHoldings().map(h => calcHolding(h)).filter(c => !c.skip);
+  $('#purifKpis').innerHTML = purifKpis(k => rows.reduce((a,c) => a + (c[k] || 0), 0));
+}
+function purifKpis(tot){
+  const paid = getPaid();
+  const card = (label, total) => { const rest = total - paid;
+    return `<div class="kpi"><div class="l">${label}</div><div class="v">${money(total)}</div>
+      <div style="margin-top:6px;font-size:13px">المدفوع: <b>${money(paid)}</b> · ${rest > 0 ? `الباقي عليك: <b class="neg">${money(rest)}</b>` : `<b class="pos">خلصت ✓</b>${rest < 0 ? ` <span class="mut">(زيادة ${money(-rest)})</span>` : ''}`}</div></div>`; };
+  return card('إجمالي التطهير — كاشف', tot('kAmt')) + card('إجمالي التطهير — اسهم حلال', tot('hAmt')) + card('إجمالي التطهير — AAOIFI حسب الأيام', tot('aAmt'));
+}
+
+// ---------- التوقع مقابل الفعلي (v3.1) ----------
+// ترتيب البرنامج في آخر يوم قبل الجلسة، مقابل الترتيب الفعلي لمكاسب الأسهم في الجلسة (من الأعلى للأقل)
+let evalDay = {}, evalQ = '';
+const rhoLbl = r => r >= 0.3 ? ['توافق جيد','pos'] : r >= 0.1 ? ['توافق ضعيف','pos'] : r > -0.1 ? ['مفيش علاقة تقريباً','mut'] : r > -0.3 ? ['عكسي ضعيف','neg'] : ['عكس الترتيب','neg'];
+const signed = (v, d = 2) => v == null ? '—' : `<span class="${v > 0 ? 'pos' : v < 0 ? 'neg' : 'mut'}">${v > 0 ? '+' : ''}${fmt(v, d)}</span>`;
+// kind: 'rank' = تاب مقارنة (الترتيب العام)، 'mom' = تاب مقارنة زخم (ترتيب درجة زخم الشراء)
+function renderEval(kind = 'rank'){
+  const raw = M_ => (M_ ? D.momEval : D.rankEval), M = kind === 'mom', r0 = raw(M);
+  const E = Array.isArray(r0) ? r0 : (r0 ? [r0] : []);   // يوم واحد ممكن ييجي عنصر مش قائمة
+  const L = M
+    ? {mine:'ترتيب الزخم', my10:'أعلى 10 زخم', last10:'أقل 10 زخم', basis:'ترتيب الزخم يوم', star:'من أعلى 10 في الزخم امبارح', diff:'ترتيب الزخم', better:'كسب أحسن من ترتيب زخمه', worse:'أقل',
+       empty:'لسه مفيش مقارنة زخم. أول مقارنة هتظهر بعد تحديث الساعة 2:45 النهارده: زخم امبارح مقابل مكاسب النهارده، وبعدها بتتحدث آخر كل يوم تداول.',
+       about:'سبيرمان من −1 لـ +1: +1 يعني الأسهم اللي زخمها كان أعلى امبارح هي اللي كسبت أكتر النهارده بنفس الترتيب، و 0 يعني الزخم ما قالش حاجة عن اليوم اللي بعده. زخم الشراء معمول عشان يقيس قوة الشراء على المدى القصير، فالمقارنة دي هي اختباره الحقيقي. احكم على المتوسط بعد أيام كتير، مش على يوم واحد.'}
+    : {mine:'ترتيبي', my10:'أفضل 10 عندي', last10:'آخر 10 عندي', basis:'ترتيبي يوم', star:'من أفضل 10 في ترتيبي', diff:'ترتيبي', better:'كسب أحسن من توقعي', worse:'أقل',
+       empty:'لسه مفيش مقارنة. المقارنة بتتحدث آخر كل يوم تداول مع التحديث الكامل الساعة 2:45 (بعد انتهاء الجلسة).',
+       about:'سبيرمان من −1 لـ +1. +1 يعني ترتيبي طلع زي ترتيب المكاسب بالظبط، و 0 يعني مفيش علاقة، والسالب يعني العكس. في يوم واحد الرقم بيتأثر جامد بأخبار السوق، فالأهم المتوسط على أيام كتير، وهل أفضل 10 عندي بيكسبوا أكتر من السوق ومن آخر 10. البرنامج مبني على القيمة العادلة والترند (مدى متوسط)، مش على توقع حركة يوم واحد.'};
+  if (!E.length) { $('#view').innerHTML = `<div class="card empty">${L.empty}</div>`; return; }
+  if (!E.find(e => e.date === evalDay[kind])) evalDay[kind] = E[0].date;
+  const e = E.find(x => x.date === evalDay[kind]), [rl, rc] = rhoLbl(e.rho);
+  const names = Object.fromEntries(D.stocks.map(s => [s.symbol, s.name]));
+  const q = evalQ.trim().toLowerCase();
+  const rows = (e.rows || []).filter(r => !q || r.s.toLowerCase().includes(q) || (names[r.s] || '').toLowerCase().includes(q));
+  const avg = k => { const v = E.map(x => x[k]).filter(x => x != null); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; };
+  $('#view').innerHTML = `
+  <div class="filters" style="position:static;padding:0 0 10px">
+    <select id="evDay" onchange="evalDay['${kind}']=this.value;render()">${E.map(x => `<option value="${x.date}" ${x.date === evalDay[kind] ? 'selected' : ''}>جلسة ${dayName(x.date)} ${dayDate(x.date)}</option>`).join('')}</select>
+    <input type="search" id="evQ" placeholder="ابحث بالرمز أو الاسم..." value="${esc(evalQ)}" oninput="evalQ=this.value;renderEvalKeepFocus()">
+    <span class="note">${L.basis} <b>${dayName(e.basedOn)} ${dayDate(e.basedOn)}</b> مقابل مكاسب جلسة <b>${dayName(e.date)} ${dayDate(e.date)}</b> (من إغلاق ${dayDate(e.prevDay)}) · ${e.n} سهم · بتتحدث آخر كل يوم تداول (2:45)</span>
+  </div>
+  <div class="kpis" style="margin-bottom:12px">
+    <div class="kpi"><div class="l">التوافق بين ${L.mine} والفعلي (سبيرمان)</div><div class="v">${signed(e.rho, 2)}</div><div class="${rc}" style="font-size:12.5px">${rl}</div></div>
+    <div class="kpi"><div class="l">متوسط مكسب ${L.my10}</div><div class="v">${pct(e.top10Avg, 2)}</div><div class="mut" style="font-size:12.5px">السوق كله: ${pct(e.marketAvg, 2)}</div></div>
+    <div class="kpi"><div class="l">متوسط مكسب ${L.last10}</div><div class="v">${pct(e.bottom10Avg, 2)}</div></div>
+    <div class="kpi"><div class="l">${L.my10} في الفعلي</div><div class="v">${e.top10InTop10} <small>في أعلى 10</small></div><div class="mut" style="font-size:12.5px">${e.top10InTopHalf} من 10 في النص الأعلى</div></div>
+  </div>
+  <div class="card scroll" style="max-height:70vh"><table class="tbl"><thead><tr>
+    <th>الترتيب الفعلي</th><th>السهم</th><th>المكسب</th>${M ? '<th>زخم امبارح</th>' : ''}<th>${L.mine}</th><th>الفرق</th>
+  </tr></thead><tbody>${rows.map(r => { const d = r.p - r.a; return `<tr class="row ${r.p <= 10 ? 'picked' : ''}" onclick="openDrawer('${r.s}')" title="${r.p <= 10 ? L.star : ''}">
+    <td><span class="rk" style="color:var(--text)">#${r.a}</span></td>
+    <td><div class="sym">${r.s}${r.p <= 10 ? ' <span class="chg pos">★</span>' : ''}</div><div class="nm">${esc(names[r.s] || '')}</div></td>
+    <td>${pct(r.g, 2)}</td>
+    ${M ? `<td>${r.v == null ? '—' : fmt(r.v, 0)}</td>` : ''}
+    <td><span class="rk">#${r.p}</span></td>
+    <td>${d === 0 ? '<span class="mut">=</span>' : Math.abs(d) <= 10 ? `<span class="pos">${Math.abs(d)} قريب</span>` : `<span class="${d > 0 ? 'pos' : 'neg'}">${d > 0 ? '▲' : '▼'} ${Math.abs(d)}</span>`}</td></tr>`; }).join('')}</tbody></table></div>
+  <p class="note">★ = ${L.star}. "الفرق" = ${L.diff} ناقص الترتيب الفعلي: ▲ يعني السهم ${L.better}، و ▼ يعني ${L.worse}. الأسهم اللي ما اتداولتش في الجلسة مش داخلة في المقارنة.</p>
+  <div class="card box" style="margin-top:12px"><h4>كل الأيام</h4><div class="scroll"><table class="tbl"><thead><tr>
+    <th>الجلسة</th><th>${M ? 'زخم يوم' : 'ترتيب يوم'}</th><th>سبيرمان</th><th>${L.my10}</th><th>السوق</th><th>${L.last10}</th><th>${L.my10} في أعلى 10</th></tr></thead><tbody>
+    ${E.map(x => `<tr class="row" onclick="evalDay['${kind}']='${x.date}';render()"><td><b>${dayName(x.date)} ${dayDate(x.date)}</b></td><td class="mut">${dayDate(x.basedOn)}</td><td>${signed(x.rho, 2)}</td>
+      <td>${pct(x.top10Avg, 2)}</td><td>${pct(x.marketAvg, 2)}</td><td>${pct(x.bottom10Avg, 2)}</td><td>${x.top10InTop10} / 10</td></tr>`).join('')}
+    ${E.length > 1 ? `<tr class="totrow"><td colspan="2"><b>المتوسط (${E.length} جلسة)</b></td><td>${signed(avg('rho'), 2)}</td><td>${pct(avg('top10Avg'), 2)}</td><td>${pct(avg('marketAvg'), 2)}</td><td>${pct(avg('bottom10Avg'), 2)}</td><td>${fmt(avg('top10InTop10'), 1)} / 10</td></tr>` : ''}
+  </tbody></table></div>
+  <p class="note" style="margin:8px 0 0"><b>إزاي تقرا الأرقام:</b> ${L.about}</p></div>`;
+}
+function renderEvalKeepFocus(){ const pos = $('#evQ').selectionStart; render(); const i = $('#evQ'); i.focus(); i.setSelectionRange(pos, pos); }
+
+function renderPurifKeepFocus(){ const pos = $('#pQ').selectionStart; render(); const i = $('#pQ'); i.focus(); i.setSelectionRange(pos,pos); }
+
+function renderMethod(){
+  const w = D.weights;
+  $('#view').innerHTML = `<div class="card box method" style="padding:18px 20px">
+  <h4>كيف يعمل البوت؟</h4>
+  <p><b>1. القطاعات والفحص الشرعي</b> — من <a href="https://stocks.templatesnippet.com/stocks" target="_blank">اسهم حلال</a>. نستخدم نفس الحكم الإجمالي للموقع (يجمع قوائم مصفّى، كاشف، أسطول، ثندر، بنك فيصل، مؤشر الشريعة EGX33 ...). يتم الإبقاء فقط على <b>متوافق</b> و<b>بدون قروض ربوية</b>${D.includeDoubtful?' و<b>المشكوك فيه</b>':''}، وأي سهم غير مدرج في الفحص يُستبعد.</p>
+  <p><b>2. القيمة العادلة</b> — من <a href="https://arabicstock.com" target="_blank">السهم العربي</a> (القيمة العادلة العامة + هدف المحللين + نماذج DCF / Graham / DDM / EPV / Comps، ودرجة الثقة، والصحة المالية، و Piotroski و Altman Z). الصعود المتوقع يُحسب على سعر TradingView الحالي.</p>
+  <p><b>3. التحليل الفني</b> — من <a href="https://www.tradingview.com/markets/stocks-egypt/" target="_blank">TradingView</a>: تقييم TradingView المجمّع (26 مؤشر: متوسطات متحركة + مذبذبات) على 5 فريمات (ساعة، 4 ساعات، يومي، أسبوعي، شهري)، بالإضافة لـ 18 فحص خاص: EMA20/50/200، MACD، RSI، ADX/DMI، Stochastic، CCI، Williams %R، AO، Momentum، Ichimoku، Parabolic SAR، Bollinger، Ultimate Osc، أداء شهر و3 شهور، وحجم التداول.</p>
+  <p><b>الدرجة النهائية (0-100)</b> = فني ${w.tech*100}% + القيمة العادلة ${w.value*100}% + الجودة المالية ${w.quality*100}% + السيولة ${w.liquidity*100}%.</p>
+  <p>التوصية: ≥70 شراء قوي · ≥60 شراء · ≥48 مراقبة · أقل من ذلك تجنب.</p>
+  <p><b>زخم الشراء (0-100)</b> — مؤشر منفصل ما بيدخلش في الدرجة: حجم التداول مع الصعود 20 + تدفق الفلوس (CMF و MFI) 20 + قوة الترند ADX/DMI 15 + MACD 15 + RSI 10 + الاتجاه (EMA20/EMA50) 10 + اختراق قمة الشهر 10. بيتحدث مع تحديث الأسعار الساعة 12 والتحديث الكامل. 🚀 = السعر عند قمة الشهر أو فوقها، بحجم 1.5 ضعف المتوسط أو أكتر، والسهم طالع.</p>
+  <p class="note">⚠️ هذه أداة مساعدة آلية تعتمد على بيانات من مواقع خارجية وقد تكون متأخرة أو غير دقيقة، وليست نصيحة استثمارية أو فتوى شرعية. راجع بنفسك قبل أي قرار.</p></div>`;
+}
+
+function openDrawer(sym){
+  const s = D.stocks.find(x=>x.symbol===sym); if (!s) return;
+  const [sc,sl] = signal(s.score), f = s.fair, t = s.tech;
+  const sbar = (l,v) => `<div class="sb"><span>${l}</span><div class="bar"><i style="width:${v??0}%;background:${v==null?'var(--border)':scoreColor(v)}"></i></div><b>${v==null?'—':fmt(v,0)}</b></div>`;
+  const tf = (l,v) => { const [x,c]=tvLabel(v); return `<div><b>${l}</b><span class="${c}">${x}</span></div>`; };
+  const ic = v => v===1?'<span class="pos">▲</span>':v===-1?'<span class="neg">▼</span>':'<span class="mut">●</span>';
+  $('#drawer').innerHTML = `<div class="dh"><div><div style="font-size:20px;font-weight:800">${s.symbol} <span class="pill p-${sc}">${sl}</span></div>
+    <div class="nm" style="max-width:none">${esc(s.name)} · ${esc(s.sector)}</div>
+    <div style="margin-top:4px"><b>${fmt(s.price, s.price<10?3:2)}</b> ج.م ${pct(s.change,2)} · الترتيب <b>#${s.rank}</b> عام · <b>#${s.sectorRank}</b> في القطاع</div></div>
+    <div style="text-align:center"><span class="score" style="background:${scoreColor(s.score)};font-size:20px;padding:8px 12px">${fmt(s.score,1)}</span><br><button class="btn" style="margin-top:8px" onclick="closeDrawer()">✕</button></div></div>
+  <div class="db">
+    <div class="box"><h4>تفصيل الدرجة</h4>${sbar('فني',s.scores.tech)}${sbar('القيمة العادلة',s.scores.value)}${sbar('الجودة',s.scores.quality)}${sbar('السيولة',s.scores.liquidity)}</div>
+    ${momBox(s.momentum)}
+    <div class="box"><h4>القيمة العادلة <span class="mut" style="font-weight:400">— السهم العربي</span></h4>${f ? `<div class="kv">
+      <span>القيمة العادلة</span><b>${fmt(f.value,2)} ${pct(f.upside)}</b>
+      <span>التصنيف</span><span>${esc(f.cls||'—')}</span>
+      <span>درجة الثقة</span><span>${esc(f.confidence||'—')}</span>
+      <span>هدف المحللين</span><span>${f.analyst?fmt(f.analyst,2)+' '+pct(f.analystUpside):'—'}</span>
+      <span>DCF / Graham / DDM</span><span>${[f.dcf,f.graham,f.ddm].map(v=>v?fmt(v,2):'—').join(' / ')}</span>
+      <span>EPV / Comps</span><span>${[f.epv,f.comps].map(v=>v?fmt(v,2):'—').join(' / ')}</span>
+      <span>الصحة المالية</span><span>${esc(f.health||'—')}</span>
+      <span>Piotroski / Altman Z</span><span>${f.piotroski??'—'} / ${f.altmanZ??'—'}</span>
+      <span>عائد التوزيعات / P/B</span><span>${f.dy!=null?fmt(f.dy,1)+'%':'—'} / ${f.pb!=null?fmt(f.pb,1)+'x':'—'}</span>
+      <span>الديون/رأس المال</span><span>${f.debtCap!=null?fmt(f.debtCap,1)+'%':'—'}</span>
+      <span>إعلان الأرباح القادم</span><span>${esc(f.nextEarnings||'—')}</span></div>` : '<span class="note">لا توجد قيمة عادلة لهذا السهم على الموقع.</span>'}</div>
+    <div class="box"><h4>تقييم TradingView حسب الفريم</h4><div class="tfs">${tf('ساعة',t.tf.h1)}${tf('4 ساعات',t.tf.h4)}${tf('يومي',t.tf.d1)}${tf('أسبوعي',t.tf.w1)}${tf('شهري',t.tf.m1)}</div>
+      <div class="kv" style="margin-top:10px"><span>المتوسطات المتحركة (يومي)</span><span class="${tvLabel(t.tf.ma)[1]}">${tvLabel(t.tf.ma)[0]}</span>
+      <span>المذبذبات (يومي)</span><span class="${tvLabel(t.tf.osc)[1]}">${tvLabel(t.tf.osc)[0]}</span>
+      <span>دعم / مقاومة (Pivot شهري)</span><span>${fmt(t.support)} / ${fmt(t.resistance)}</span>
+      <span>ATR</span><span>${fmt(t.atr,3)}</span>
+      <span>أداء أسبوع / شهر / 3 شهور</span><span>${pct(s.perfW)} ${pct(s.perf1M)} ${pct(s.perf3M)}</span></div></div>
+    <div class="box"><h4>فحوصات المؤشرات الفنية</h4>${(t.checks||[]).map(c=>`<div class="chk">${ic(c.signal)}<span>${esc(c.name)}</span><span class="mut">${esc(c.detail)}</span></div>`).join('')}</div>
+    <div class="box"><h4>الفحص الشرعي</h4><div class="kv">
+      <span>الحكم</span><b class="pos">${verdictAr[s.shariah.verdict]}</b>
+      <span>قوائم تعتبره متوافق</span><span>${s.shariah.compliantSources} من ${s.shariah.totalSources}</span>
+      <span>نسبة الإيرادات المحرمة</span><span>${s.shariah.haramPct!=null?s.shariah.haramPct+'%':'—'}</span>
+      <span>نسبة القروض الربوية</span><span>${s.shariah.loansPct!=null?s.shariah.loansPct+'%':'—'}</span></div>
+      <div style="margin-top:10px">${(s.shariah.sources||[]).slice().sort((a,b)=>srcOrder[a.status]-srcOrder[b.status]).map(x=>`<div class="chk" title="${esc(x.note||'')}">
+        ${srcIcon[x.status]||'●'}<span>${esc(x.name)}</span><span class="${srcCls[x.status]||'mut'}">${srcAr[x.status]||x.status}</span></div>`).join('')}</div></div>
+    ${newsForStock(s)}
+    <div class="box links"><a href="https://www.tradingview.com/chart/?symbol=EGX:${s.symbol}" target="_blank">📈 الشارت على TradingView</a>
+      ${f?.url?`<a href="${esc(f.url)}" target="_blank">💰 السهم العربي</a>`:''}
+      <a href="https://stocks.templatesnippet.com/stocks/${s.symbol}" target="_blank">☪️ الفحص الشرعي</a></div>
+  </div>`;
+  $('#drawer').classList.add('on'); $('#dbg').classList.add('on');
+}
+function closeDrawer(){ $('#drawer').classList.remove('on'); $('#dbg').classList.remove('on'); }
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeDrawer(); });
+
+document.querySelectorAll('.tab').forEach(b => b.onclick = () => { tab = b.dataset.t; try{localStorage.setItem('egx-tab',tab)}catch(e){}; render(); });
+['#q','#fSector','#fSignal','#fFair','#fMom','#fDaily','#fSel'].forEach(id => $(id).addEventListener('input', render));
+$('#clearSel').onclick = () => { picked.clear(); savePicked(); $('#fSel').checked = false; render(); };
+try { $('#fDaily').checked = localStorage.getItem('egx-daily') === '1'; } catch(e){}
+$('#fDaily').addEventListener('change', e => { try{ localStorage.setItem('egx-daily', e.target.checked ? '1' : '0'); }catch(_){} });
+savePicked();
+
+function reloadData(){
+  // محفظة ثندر بتتحدث مع كل تحديث، فنعيد تحميلها هي كمان
+  const oh = document.getElementById('holdScript'); if (oh) oh.remove();
+  const hs = document.createElement('script'); hs.id = 'holdScript'; hs.charset = 'utf-8'; hs.src = 'my-holdings.js?t=' + Date.now(); hs.onerror = () => {};
+  document.body.appendChild(hs);
+  const old = document.getElementById('dataScript'); if (old) old.remove();
+  const sc = document.createElement('script'); sc.id = 'dataScript'; sc.charset = 'utf-8';
+  // في تبويب نسب التطهير ما نعيدش رسم الصفحة عشان ما نمسحش اللي بتكتبه في الفورم
+  const done = () => { if (tab === 'purif' && D && document.querySelector('#hSym')) { D = window.EGX_DATA || D; return; } render(); };
+  sc.src = 'data.js?t=' + Date.now(); sc.onload = done; sc.onerror = done;
+  document.body.appendChild(sc);
+}
+setInterval(reloadData, 5 * 60 * 1000);
+
+// ---- شريط التحديث (v3.1): update.ps1 بيكتب status.js طول التحديث، والصفحة بتقراه كل كام ثانية ----
+let updWasRunning = false, updHideTimer = null, updTimer = null;
+function pollStatus(){
+  const old = document.getElementById('statusScript'); if (old) old.remove();
+  const sc = document.createElement('script'); sc.id = 'statusScript'; sc.charset = 'utf-8';
+  sc.src = 'status.js?t=' + Date.now();
+  sc.onload = () => showStatus(window.EGX_STATUS); sc.onerror = () => showStatus(null);
+  document.body.appendChild(sc);
+}
+function showStatus(st){
+  const box = $('#upd'); let next = 15000;
+  const mins = iso => (Date.now() - new Date(iso)) / 60000;
+  const set = (cls, title, pctTxt, w, msg) => { box.className = 'upd ' + cls; box.hidden = false; $('#updTitle').textContent = title; $('#updPct').textContent = pctTxt; $('#updFill').style.width = w + '%'; $('#updMsg').textContent = msg; };
+  if (st && st.running && mins(st.at) < 10) {
+    // شغال: النسبة + الخطوة الحالية + الوقت من البداية
+    const el = Math.max(0, Math.round(mins(st.startedAt)));
+    set('run', st.mode === 'prices' ? 'جاري تحديث الأسعار' : 'جاري التحديث الكامل', st.pct + '%', st.pct,
+        `${st.msg} · بقاله ${el < 1 ? 'أقل من دقيقة' : el + ' دقيقة'} · الصفحة هتتحدث لوحدها لما يخلص`);
+    updWasRunning = true; clearTimeout(updHideTimer); next = 2500;
+  } else if (st && st.running) {
+    set('bad', 'التحديث واقف', '!', st.pct, `آخر خطوة: ${st.msg} (من ${Math.round(mins(st.at))} دقيقة). ممكن يكون الجهاز نام أثناء التحديث. شغّله تاني من اختصار "WS Stock Analyzer - Update Now".`);
+    updWasRunning = false;
+  } else if (st && st.error && mins(st.at) < 120) {
+    set('bad', 'التحديث ما كملش', '!', st.pct, `${st.error} · البيانات المعروضة من آخر تحديث ناجح.`);
+    if (updWasRunning) { updWasRunning = false; reloadData(); }
+  } else if (updWasRunning) {
+    // لسه خالص: نقرا البيانات الجديدة ونعرض ✓ شوية
+    updWasRunning = false; reloadData();
+    set('ok', 'اتحدث ✓', '100%', 100, st?.msg || 'تم التحديث');
+    updHideTimer = setTimeout(() => { box.hidden = true; }, 8000);
+  } else if (!box.classList.contains('ok')) box.hidden = true;
+  clearTimeout(updTimer); updTimer = setTimeout(pollStatus, next);
+}
+pollStatus();
+// ارتفاع شريط الفلاتر، عشان الجدول ياخد باقي الشاشة تحته
+function syncFilterHeight(){ const f = $('#filters'); document.documentElement.style.setProperty('--fh', (f.offsetParent ? f.offsetHeight : 0) + 'px'); }
+window.addEventListener('resize', syncFilterHeight);
+new MutationObserver(syncFilterHeight).observe($('#view'), {childList:true});
+
+const root = document.documentElement;
+try { const th = localStorage.getItem('egx-theme'); if (th) root.dataset.theme = th; } catch(e){}
+$('#themeBtn').onclick = () => {
+  const dark = root.dataset.theme ? root.dataset.theme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
+  root.dataset.theme = dark ? 'light' : 'dark'; try{localStorage.setItem('egx-theme',root.dataset.theme)}catch(e){}
+};
+reloadData();
+</script>
+</body>
+</html>
