@@ -1,1 +1,1 @@
-window.EGX_STATUS = {"running":false,"mode":"prices","pct":100,"msg":"تم تحديث أسعار 121 سهم","startedAt":"2026-11-25T20:50:43","at":"2026-11-25T20:50:47","error":null};
+window.EGX_STATUS = {"running":false,"mode":"full","pct":100,"msg":"تم: 121 سهم مرتب","startedAt":"2026-11-25T22:49:44","at":"2026-11-25T22:59:54","error":null};
