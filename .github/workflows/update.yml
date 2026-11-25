@@ -1,0 +1,70 @@
+# WS Stock Analyzer — التحديث على سيرفرات GitHub ونشر الصفحة
+# بيشتغل الأحد-الخميس (مواعيد UTC؛ القاهرة = UTC+2 في الشتا):
+#   10:05 UTC = 12:05 القاهرة  -> تحديث الأسعار والزخم
+#   12:50 UTC =  2:50 القاهرة  -> التحديث الكامل + المقارنات
+#   14:30 UTC =  4:30 القاهرة  -> احتياطي لو التحديث الكامل اتأخر أو ما اشتغلش
+# update.ps1 -Auto بيقرر لوحده هيعمل إيه (ولو كله متحدث ما بيعملش حاجة)
+name: Update WS Stock Analyzer
+
+on:
+  schedule:
+    - cron: '5 10 * * 0-4'
+    - cron: '50 12 * * 0-4'
+    - cron: '30 14 * * 0-4'
+  workflow_dispatch: {}   # تشغيل يدوي من تبويب Actions
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: ws-update
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cairo time zone
+        shell: powershell
+        run: tzutil /s "Egypt Standard Time"
+
+      - name: Run update
+        shell: powershell
+        run: .\update.ps1 -Auto -NoOpen
+
+      - name: Save data to the repository
+        shell: powershell
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet
+          if ($LASTEXITCODE -ne 0) {
+            git commit -m "Data update $(Get-Date -Format 'yyyy-MM-dd HH:mm') Cairo"
+            git push
+          } else { Write-Host 'No changes' }
+
+      - name: Prepare site
+        shell: powershell
+        run: |
+          New-Item -ItemType Directory -Force _site | Out-Null
+          Copy-Item index.html, data.js, status.js, manifest.webmanifest, icon.svg -Destination _site
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: update
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
