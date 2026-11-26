@@ -183,6 +183,7 @@ h1 span{color:var(--accent)}
     <button class="tab" data-t="eval">📊 مقارنة</button>
     <button class="tab" data-t="evalmom">⚡ مقارنة زخم</button>
     <button class="tab" data-t="mine">💼 أسهمي</button>
+    <button class="tab" data-t="picks">🎯 توصيات</button>
   </div>
 
   <div class="filters" id="filters">
@@ -262,10 +263,10 @@ function render(){
   const secs = [...new Set(D.stocks.map(s=>s.sector))].sort((a,b)=>a.localeCompare(b,'ar'));
   sel.innerHTML = '<option value="">كل القطاعات</option>' + secs.map(s=>`<option ${s===cur?'selected':''}>${esc(s)}</option>`).join('');
   document.querySelectorAll('.tab').forEach(b => b.classList.toggle('on', b.dataset.t === tab));
-  $('#filters').style.display = (tab === 'method' || tab === 'purif' || tab === 'eval' || tab === 'evalmom' || tab === 'mine') ? 'none' : 'flex';
+  $('#filters').style.display = (tab === 'method' || tab === 'purif' || tab === 'eval' || tab === 'evalmom' || tab === 'mine' || tab === 'picks') ? 'none' : 'flex';
   if (!document.querySelector(`.tab[data-t="${tab}"]`)) tab = 'rank';   // تاب اتشال (زي تغير المراكز)
   document.querySelectorAll('.tab').forEach(b => b.classList.toggle('on', b.dataset.t === tab));
-  (({rank:renderRank, sector:renderSectors, excluded:renderExcluded, method:renderMethod, news:renderNews, purif:renderPurif, eval:() => renderEval('rank'), evalmom:() => renderEval('mom'), mine:renderMine})[tab] || renderRank)();
+  (({rank:renderRank, sector:renderSectors, excluded:renderExcluded, method:renderMethod, news:renderNews, purif:renderPurif, eval:() => renderEval('rank'), evalmom:() => renderEval('mom'), mine:renderMine, picks:renderPicks})[tab] || renderRank)();
 }
 
 function filtered(){
@@ -730,6 +731,69 @@ function renderMine(){
     <tr class="totrow"><td colspan="4"><b>الإجمالي</b></td><td><b>${money(tv)}</b></td><td>100%</td><td><span class="${tpl >= 0 ? 'pos' : 'neg'}"><b>${tpl >= 0 ? '+' : ''}${money(tpl)}</b></span></td><td colspan="7"></td></tr>
   </tbody></table></div>
   <p class="note">الربح/الخسارة محسوبة على سعر آخر تحديث، من غير عمولات. السهم اللي "مش في التحليل" يعني مستبعد شرعياً أو مش مدرج في الفحص، وسعره من بيانات الفحص الشرعي. دوس على أي سهم عشان تشوف تحليله.</p>`;
+}
+
+// ---------- توصيات (v3.2): الأسهم القوية + منطقة الدخول + الهدف + الخروج (وقف الخسارة) ----------
+// المستويات محسوبة من: الدعم والمقاومة (Pivot شهري S1/R1) و ATR (متوسط الحركة اليومية) والقيمة العادلة/هدف المحللين
+let pkMin = 'b', pkOnlyIn = false;
+try { pkMin = localStorage.getItem('egx-pk-min') || 'b'; pkOnlyIn = localStorage.getItem('egx-pk-in') === '1'; } catch(e){}
+function setPk(k, v){ if (k === 'min') pkMin = v; else pkOnlyIn = v; try { localStorage.setItem('egx-pk-min', pkMin); localStorage.setItem('egx-pk-in', pkOnlyIn ? '1' : '0'); } catch(e){} render(); }
+function tradePlan(s){
+  const p = s.price, t = s.tech || {}, a = t.atr, S1 = t.support, R1 = t.resistance, rsi = t.rsi;
+  if (!p || !a) return null;
+  let lo, hi, note = '', broke = false;
+  if (S1 != null && S1 < p && p - S1 <= 2 * a) { lo = S1; hi = Math.min(p, S1 + a); note = 'قريب من الدعم'; }
+  else if (S1 != null && S1 >= p) { lo = p - a; hi = p; broke = true; note = 'السعر تحت الدعم الشهري'; }
+  else if (rsi != null && rsi >= 65) { lo = p - 1.5 * a; hi = p - 0.5 * a; note = 'السهم طالع جامد (RSI عالي) — الأفضل تستنى تصحيح'; }
+  else { lo = p - a; hi = p; note = 'فوق الدعم بمسافة — دخول على مراحل'; }
+  const stop = lo - 1.2 * a;
+  const t1 = R1 != null && R1 > p + 0.5 * a ? R1 : p + 2 * a, t1Src = R1 != null && R1 > p + 0.5 * a ? 'المقاومة الشهرية' : 'فني (2×ATR)';
+  const fund = Math.max(s.fair?.value || 0, s.fair?.analyst || 0);
+  const t2 = fund > t1 + 0.5 * a ? fund : t1 + 2 * a, t2Src = fund > t1 + 0.5 * a ? (fund === s.fair?.analyst ? 'هدف المحللين' : 'القيمة العادلة') : 'فني (امتداد)';
+  const mid = (lo + hi) / 2, rr = mid > stop ? (t1 - mid) / (mid - stop) : null;
+  const st = broke ? ['⚠ تحت الدعم', 'p-a', 'استنى السهم يرجع فوق الدعم الشهري قبل ما تدخل'] :
+    p <= hi + 1e-9 ? ['✅ في منطقة الدخول', 'p-sb', ''] : p <= hi + a ? ['🟡 قريب', 'p-w', 'استنى نزول بسيط لمنطقة الدخول'] : ['⏳ استنى تصحيح', 'p-n', 'السعر بعيد عن منطقة الدخول'];
+  return { lo, hi, stop, t1, t1Src, t2, t2Src, rr, st, note, inZone: !broke && p <= hi + 1e-9 };
+}
+function renderPicks(){
+  const min = pkMin === 'sb' ? 70 : 60;
+  const all = D.stocks.filter(s => s.score >= min && ['compliant', 'no_loans'].includes(s.shariah?.verdict))
+    .map(s => ({ s, t: tradePlan(s) })).filter(r => r.t);
+  const rows = all.filter(r => !pkOnlyIn || r.t.inZone).sort((a, b) => b.s.score - a.s.score);
+  const nIn = all.filter(r => r.t.inZone).length;
+  const d = v => v < 10 ? 3 : 2, px = v => fmt(v, d(v));
+  const up = (v, p) => `<span class="chg ${v >= p ? 'pos' : 'neg'}">${v >= p ? '+' : ''}${fmt((v / p - 1) * 100, 1)}%</span>`;
+  const head = `<div class="card box" style="margin-bottom:12px">
+    <h4>🎯 توصيات — الأسهم القوية ومناطق الدخول والخروج</h4>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:6px 0">
+      <select onchange="setPk('min',this.value)" style="background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:10px;padding:7px 10px;font:inherit">
+        <option value="b" ${pkMin === 'b' ? 'selected' : ''}>شراء + شراء قوي (الدرجة ≥ 60)</option>
+        <option value="sb" ${pkMin === 'sb' ? 'selected' : ''}>شراء قوي بس (الدرجة ≥ 70)</option></select>
+      <label class="note" style="margin:0;display:flex;gap:6px;align-items:center"><input type="checkbox" ${pkOnlyIn ? 'checked' : ''} onchange="setPk('in',this.checked)"> اللي في منطقة الدخول دلوقتي بس</label>
+      <span class="note" style="margin:0">${all.length} سهم قوي · <b class="pos">${nIn}</b> في منطقة الدخول</span>
+    </div></div>`;
+  if (!rows.length) { $('#view').innerHTML = head + '<div class="card empty">مفيش أسهم مطابقة دلوقتي.</div>'; return; }
+  $('#view').innerHTML = head + `<div class="card scroll"><table class="tbl"><thead><tr>
+    <th>#</th><th>السهم</th><th>السعر</th><th>الدرجة</th><th>التوصية</th><th>زخم الشراء</th><th>الحالة</th>
+    <th>منطقة الدخول</th><th>الهدف الأول</th><th>الهدف الثاني</th><th>الخروج (وقف الخسارة)</th><th>العائد / المخاطرة</th>
+  </tr></thead><tbody>${rows.map(({ s, t }) => { const [sc, sl] = signal(s.score); return `<tr class="row" onclick="openDrawer('${s.symbol}')">
+    <td><span class="rk">${s.rank}</span></td>
+    <td><div class="sym">${s.symbol}</div><div class="nm">${esc(s.name)}</div></td>
+    <td>${px(s.price)}<div class="chg">${pct(s.change, 2)}</div></td>
+    <td><span class="score" style="background:${scoreColor(s.score)}">${fmt(s.score, 1)}</span></td>
+    <td><span class="pill p-${sc}">${sl}</span></td>
+    <td>${momCell(s.momentum)}</td>
+    <td><span class="pill ${t.st[1]}" title="${esc(t.st[2] || t.note)}">${t.st[0]}</span></td>
+    <td title="${esc(t.note)}"><b>${px(t.lo)} – ${px(t.hi)}</b></td>
+    <td title="${esc(t.t1Src)}"><b class="pos">${px(t.t1)}</b> ${up(t.t1, s.price)}</td>
+    <td title="${esc(t.t2Src)}"><b class="pos">${px(t.t2)}</b> ${up(t.t2, s.price)}<div class="chg mut">${esc(t.t2Src)}</div></td>
+    <td><b class="neg">تحت ${px(t.stop)}</b> ${up(t.stop, s.price)}</td>
+    <td>${t.rr == null ? '—' : `<b class="${t.rr >= 2 ? 'pos' : t.rr >= 1.2 ? '' : 'neg'}">1 : ${fmt(t.rr, 1)}</b>`}</td></tr>`; }).join('')}
+  </tbody></table></div>
+  <p class="note"><b>إزاي المستويات اتحسبت:</b> منطقة الدخول من الدعم الشهري (Pivot S1) لو السعر قريب منه، وإلا من السعر الحالي ناقص ATR (متوسط حركة السهم في اليوم). لو السهم طالع جامد (RSI ≥ 65) المنطقة بتبقى تحت السعر عشان تستنى تصحيح.
+  <b>الهدف الأول</b> = المقاومة الشهرية (R1) لو فوق السعر، وإلا السعر + 2×ATR. <b>الهدف الثاني</b> = القيمة العادلة أو هدف المحللين (الأعلى)، ولو مش متاحين بيبقى امتداد فني.
+  <b>الخروج</b> = وقف خسارة تحت منطقة الدخول بـ 1.2×ATR: لو السهم قفل تحته اخرج. <b>العائد/المخاطرة</b> محسوب لحد الهدف الأول من نص منطقة الدخول — الأحسن 1:2 أو أكتر.
+  المستويات بتتحسب من آخر تحديث للبيانات، وبتتغير مع كل تحديث. أداة مساعدة آلية، مش نصيحة استثمارية.</p>`;
 }
 
 function renderPurifKeepFocus(){ const pos = $('#pQ').selectionStart; render(); const i = $('#pQ'); i.focus(); i.setSelectionRange(pos,pos); }
