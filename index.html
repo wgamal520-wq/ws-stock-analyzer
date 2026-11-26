@@ -182,6 +182,7 @@ h1 span{color:var(--accent)}
     <button class="tab" data-t="purif">🧮 نسب التطهير</button>
     <button class="tab" data-t="eval">📊 مقارنة</button>
     <button class="tab" data-t="evalmom">⚡ مقارنة زخم</button>
+    <button class="tab" data-t="mine">💼 أسهمي</button>
   </div>
 
   <div class="filters" id="filters">
@@ -205,6 +206,8 @@ h1 span{color:var(--accent)}
 
 <!-- اختياري: محفظة جاهزة في ملف my-holdings.js بالشكل: window.MY_HOLDINGS = [ ... ]; -->
 <script src="my-holdings.js" charset="utf-8" onerror="void 0"></script>
+<!-- قراءة ملف ثندر (Excel) جوه المتصفح لتاب أسهمي — الملف ما بيترفعش لأي مكان -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" onerror="void 0"></script>
 <script>
 const $ = s => document.querySelector(s);
 const fmt = (v, d = 2) => v == null || isNaN(v) ? '—' : Number(v).toLocaleString('en-US', {minimumFractionDigits: d, maximumFractionDigits: d});
@@ -259,10 +262,10 @@ function render(){
   const secs = [...new Set(D.stocks.map(s=>s.sector))].sort((a,b)=>a.localeCompare(b,'ar'));
   sel.innerHTML = '<option value="">كل القطاعات</option>' + secs.map(s=>`<option ${s===cur?'selected':''}>${esc(s)}</option>`).join('');
   document.querySelectorAll('.tab').forEach(b => b.classList.toggle('on', b.dataset.t === tab));
-  $('#filters').style.display = (tab === 'method' || tab === 'purif' || tab === 'eval' || tab === 'evalmom') ? 'none' : 'flex';
+  $('#filters').style.display = (tab === 'method' || tab === 'purif' || tab === 'eval' || tab === 'evalmom' || tab === 'mine') ? 'none' : 'flex';
   if (!document.querySelector(`.tab[data-t="${tab}"]`)) tab = 'rank';   // تاب اتشال (زي تغير المراكز)
   document.querySelectorAll('.tab').forEach(b => b.classList.toggle('on', b.dataset.t === tab));
-  (({rank:renderRank, sector:renderSectors, excluded:renderExcluded, method:renderMethod, news:renderNews, purif:renderPurif, eval:() => renderEval('rank'), evalmom:() => renderEval('mom')})[tab] || renderRank)();
+  (({rank:renderRank, sector:renderSectors, excluded:renderExcluded, method:renderMethod, news:renderNews, purif:renderPurif, eval:() => renderEval('rank'), evalmom:() => renderEval('mom'), mine:renderMine})[tab] || renderRank)();
 }
 
 function filtered(){
@@ -436,7 +439,15 @@ function loadHoldings(){
   return holdings;   // العمليات اللي اتضافت يدوي بس
 }
 // كل العمليات = اللي جاية من ملف ثندر (بتتحدث مع كل تحديث) + اليدوي
-const allHoldings = () => [...(Array.isArray(window.MY_HOLDINGS) ? window.MY_HOLDINGS : []), ...loadHoldings()];
+// v3.1: عمليات ثندر = أحدث مصدر بين ملف my-holdings.js (من فولدر thndr على الكمبيوتر) والملف اللي اتستورد في المتصفح
+function thndrLots(){
+  const pc = Array.isArray(window.MY_HOLDINGS) ? window.MY_HOLDINGS : [], pcInfo = window.MY_HOLDINGS_INFO;
+  const imp = getThndrImport();
+  const pcTime = pcInfo ? new Date(pcInfo.modified.replace(' ', 'T')).getTime() : 0;
+  if (imp && (!pc.length || imp.fileTime >= pcTime)) return { lots: imp.lots, info: { file: imp.file, modified: imp.modified, closed: imp.closed, open: imp.open, via: 'browser' } };
+  return { lots: pc, info: pcInfo ? { ...pcInfo, via: 'pc' } : null };
+}
+const allHoldings = () => [...thndrLots().lots, ...loadHoldings()];
 function saveHoldings(){ try{ localStorage.setItem('egx-holdings', JSON.stringify(holdings)); }catch(e){} }
 const daysBetween = (a,b) => Math.max(1, Math.round((new Date(b+'T12:00:00') - new Date(a+'T12:00:00')) / 86400000));
 const todayStr = () => new Date().toISOString().slice(0,10);
@@ -485,7 +496,7 @@ function renderPurif(){
   const rows = all.filter(r => !r.c.skip)
     .sort((a,b) => (b.c.endDate > a.c.endDate ? 1 : b.c.endDate < a.c.endDate ? -1 : 0));
   const nOpen = all.filter(r => r.c.skip === 'open').length, nLoss = all.filter(r => r.c.skip === 'loss').length;
-  const info = window.MY_HOLDINGS_INFO;
+  const info = thndrLots().info;
   const tot = k => rows.reduce((a,r) => a + (r.c[k] || 0), 0);
   const ncTag = t => `<div class="neg" style="font-size:11.5px;white-space:normal;max-width:200px">⚠ غير شرعي حسب ${t} ← المكسب كله</div>`;
   const kWarn = c => c.kNC ? ncTag('كاشف') : '';
@@ -633,6 +644,93 @@ function renderEval(kind = 'rank'){
   <p class="note" style="margin:8px 0 0"><b>إزاي تقرا الأرقام:</b> ${L.about}</p></div>`;
 }
 function renderEvalKeepFocus(){ const pos = $('#evQ').selectionStart; render(); const i = $('#evQ'); i.focus(); i.setSelectionRange(pos, pos); }
+
+// ---------- أسهمي (v3.1): الأسهم اللي معاك دلوقتي من ثندر ----------
+// المصدر: ملف ثندر (Excel) — على الكمبيوتر من فولدر thndr، أو تستورده في المتصفح (بيتقري هنا بس وما بيترفعش)
+const THNDR_KEY = 'egx-thndr-import';
+function getThndrImport(){ try { return JSON.parse(localStorage.getItem(THNDR_KEY) || 'null'); } catch(e){ return null; } }
+function clearThndrImport(){ try { localStorage.removeItem(THNDR_KEY); } catch(e){} render(); }
+const xDate = v => v instanceof Date ? localDate(v) : typeof v === 'number' ? new Date(Math.round((v - 25569) * 86400000)).toISOString().slice(0, 10) : v ? String(v).slice(0, 10) : '';
+async function importThndr(input){
+  const f = input.files[0]; if (!f) return;
+  const msg = $('#mineMsg'); msg.className = 'note'; msg.textContent = 'بيقرا الملف...';
+  if (!window.XLSX) { msg.className = 'neg'; msg.textContent = 'أداة قراءة ملفات Excel ما اتحملتش. اتأكد إن النت شغال وافتح الصفحة تاني.'; return; }
+  try {
+    const wb = XLSX.read(await f.arrayBuffer(), { cellDates: true });
+    const sheet = n => wb.Sheets[n] ? XLSX.utils.sheet_to_json(wb.Sheets[n], { defval: null }) : [];
+    const num = v => v == null || v === '' ? null : +v;
+    let i = 0; const lots = [];
+    sheet('Closed Lots').forEach(r => { if (!r.Ticker) return; lots.push({ id: 't' + (++i), src: 'thndr', sym: String(r.Ticker).toUpperCase(), qty: num(r.Units),
+      buyDate: xDate(r['Buy Date']), buyPrice: num(r['Buy Price']), sellDate: xDate(r['Sell Date']), sellPrice: num(r['Sell Price']), divs: 0 }); });
+    const closed = lots.length;
+    sheet('Holdings').forEach(r => { if (!r.Ticker) return; lots.push({ id: 't' + (++i), src: 'thndr', sym: String(r.Ticker).toUpperCase(), qty: num(r['Units Held']),
+      buyDate: xDate(r['Buy Date']), buyPrice: num(r['Buy Price (EGP)']), sellDate: '', sellPrice: '', divs: 0 }); });
+    if (!lots.length) throw new Error('الملف ما فيهوش شيت Holdings ولا Closed Lots');
+    const d = new Date(f.lastModified);
+    localStorage.setItem(THNDR_KEY, JSON.stringify({ file: f.name, fileTime: f.lastModified, importedAt: new Date().toISOString(),
+      modified: `${localDate(d)} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`, closed, open: lots.length - closed, lots }));
+    render();
+  } catch (e) { msg.className = 'neg'; msg.textContent = 'ما قدرتش أقرا الملف: ' + (e.message || e); }
+  input.value = '';
+}
+function renderMine(){
+  const { lots, info } = thndrLots();
+  const open = [...lots.filter(h => !h.sellDate), ...loadHoldings().filter(h => !h.sellDate).map(h => ({ ...h, src: 'manual' }))];
+  const S = Object.fromEntries(D.stocks.map(s => [s.symbol, s])), P = D.purif || {}, X = Object.fromEntries((D.excluded || []).map(e => [e.symbol, e]));
+  const by = {};
+  open.forEach(h => { const g = by[h.sym] ||= { sym: h.sym, qty: 0, cost: 0, first: null, lots: 0, manual: false };
+    g.qty += +h.qty || 0; g.cost += (+h.qty || 0) * (+h.buyPrice || 0); g.lots++; if (h.src === 'manual') g.manual = true;
+    if (h.buyDate && (!g.first || h.buyDate < g.first)) g.first = h.buyDate; });
+  const rows = Object.values(by).map(g => {
+    const s = S[g.sym], p = P[g.sym], price = s?.price ?? p?.price ?? null, chg = s?.change ?? null;
+    const value = price != null ? price * g.qty : null, pl = value != null ? value - g.cost : null;
+    return { ...g, s, price, chg, avg: g.qty ? g.cost / g.qty : null, value, pl, plPct: pl != null && g.cost ? pl / g.cost * 100 : null,
+      today: price != null && chg != null ? g.qty * price * chg / (100 + chg) : null,
+      verdict: s ? s.shariah.verdict : (p?.verdict || X[g.sym]?.reason || 'not_screened'), name: s?.name || p?.name || X[g.sym]?.name || '' };
+  }).sort((a, b) => (b.value ?? 0) - (a.value ?? 0));
+  const sum = k => rows.reduce((a, r) => a + (r[k] || 0), 0);
+  const tv = sum('value'), tc = sum('cost'), tpl = tv - tc, ttoday = sum('today');
+  const bad = rows.filter(r => !['compliant', 'no_loans'].includes(r.verdict)), avoid = rows.filter(r => r.s && signal(r.s.score)[0] === 'a');
+  const src = info ? `📥 من ثندر: <b>${esc(info.file)}</b> · آخر تعديل للملف ${esc(info.modified)} · ${info.via === 'browser' ? 'مستورد في المتصفح ده' : 'من فولدر thndr على الكمبيوتر'}` : 'لسه مفيش ملف ثندر.';
+  const old = info && (Date.now() - new Date(info.modified.replace(' ', 'T'))) / 86400000 > 3;
+  const head = `<div class="card box" style="margin-bottom:12px">
+    <h4>💼 أسهمي — الأسهم اللي معاك دلوقتي</h4>
+    <p class="note" style="margin:0 0 8px">${src}</p>
+    ${old ? `<div class="err">⏰ ملف ثندر عمره ${Math.round((Date.now() - new Date(info.modified.replace(' ', 'T'))) / 86400000)} يوم. لو اشتريت أو بعت من ساعتها، صدّر ملف جديد من ثندر واستورده هنا.</div>` : ''}
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <label class="btn" style="background:var(--accent);color:#fff;border-color:var(--accent)">📥 استيراد ملف ثندر (Excel)<input type="file" id="thndrFile" accept=".xlsx" style="display:none" onchange="importThndr(this)"></label>
+      ${getThndrImport() ? '<button class="btn" onclick="clearThndrImport()">مسح الملف المستورد</button>' : ''}
+      <span id="mineMsg" class="note"></span>
+    </div>
+    <p class="note" style="margin:8px 0 0">الملف بيتقري جوه المتصفح بس وبيتحفظ فيه، وما بيترفعش لأي مكان. الأسعار والتحليل من آخر تحديث للبرنامج. العمليات اللي ضفتها يدوي في "نسب التطهير" ولسه ما اتباعتش بتظهر هنا كمان.</p></div>`;
+  if (!rows.length) { $('#view').innerHTML = head + '<div class="card empty">مفيش أسهم معاك في ملف ثندر. استورد ملف ثندر فيه شيت Holdings.</div>'; return; }
+  const vc = v => ['compliant', 'no_loans'].includes(v) ? 'pos' : v === 'doubtful' ? '' : 'neg';
+  $('#view').innerHTML = head + `
+  <div class="kpis" style="margin-bottom:12px">
+    <div class="kpi"><div class="l">قيمة أسهمك دلوقتي</div><div class="v">${money(tv)}</div><div class="mut" style="font-size:12.5px">${rows.length} سهم · التكلفة ${money(tc)}</div></div>
+    <div class="kpi"><div class="l">الربح / الخسارة</div><div class="v"><span class="${tpl >= 0 ? 'pos' : 'neg'}">${tpl >= 0 ? '+' : ''}${money(tpl)}</span></div><div style="font-size:12.5px">${pct(tc ? tpl / tc * 100 : null, 2)}</div></div>
+    <div class="kpi"><div class="l">تغير النهارده</div><div class="v"><span class="${ttoday >= 0 ? 'pos' : 'neg'}">${ttoday >= 0 ? '+' : ''}${money(ttoday)}</span></div><div style="font-size:12.5px">${pct(tv - ttoday ? ttoday / (tv - ttoday) * 100 : null, 2)}</div></div>
+    <div class="kpi"><div class="l">تنبيهات</div><div class="v" style="font-size:18px">${bad.length || avoid.length ? `${bad.length ? `<span class="neg">${bad.length} مش متوافق شرعياً</span>` : ''}${bad.length && avoid.length ? '<br>' : ''}${avoid.length ? `<span style="color:var(--warn)">${avoid.length} توصيته تجنب</span>` : ''}` : '<span class="pos">مفيش ✓</span>'}</div></div>
+  </div>
+  <div class="card scroll"><table class="tbl"><thead><tr>
+    <th>السهم</th><th>الكمية</th><th>متوسط الشراء</th><th>السعر</th><th>القيمة</th><th>الوزن</th><th>الربح/الخسارة</th><th>اليوم</th>
+    <th>الترتيب</th><th>الدرجة</th><th>التوصية</th><th>زخم الشراء</th><th>الصعود المتوقع</th><th>الحكم الشرعي</th>
+  </tr></thead><tbody>${rows.map(r => { const sg = r.s ? signal(r.s.score) : null; return `<tr class="row" ${r.s ? `onclick="openDrawer('${r.sym}')"` : ''}>
+    <td><div class="sym">${r.sym}${r.manual ? ' <span class="pill p-n" title="من الإضافة اليدوية">يدوي</span>' : ''}</div><div class="nm">${esc(r.name)}${r.first ? ` · من ${r.first}` : ''}</div></td>
+    <td>${fmt(r.qty, 0)}</td><td>${fmt(r.avg, r.avg < 10 ? 3 : 2)}</td><td>${r.price != null ? fmt(r.price, r.price < 10 ? 3 : 2) : '—'}</td>
+    <td>${money(r.value)}</td><td>${tv && r.value != null ? fmt(r.value / tv * 100, 1) + '%' : '—'}</td>
+    <td>${r.pl == null ? '—' : `<span class="${r.pl >= 0 ? 'pos' : 'neg'}">${r.pl >= 0 ? '+' : ''}${money(r.pl)}</span><div class="chg">${pct(r.plPct, 1)}</div>`}</td>
+    <td>${pct(r.chg, 2)}</td>
+    <td>${r.s ? `<span class="rk">#${r.s.rank}</span> ${rankChange(r.s)}` : '<span class="mut">—</span>'}</td>
+    <td>${r.s ? `<span class="score" style="background:${scoreColor(r.s.score)}">${fmt(r.s.score, 1)}</span>` : '—'}</td>
+    <td>${sg ? `<span class="pill p-${sg[0]}">${sg[1]}</span>` : '<span class="mut">مش في التحليل</span>'}</td>
+    <td>${r.s ? momCell(r.s.momentum) : '—'}</td>
+    <td>${r.s ? pct(r.s.fair?.upside) : '—'}</td>
+    <td><span class="${vc(r.verdict)}">${verdictAr[r.verdict] || r.verdict}</span>${vc(r.verdict) === 'neg' ? ' ⚠' : ''}</td></tr>`; }).join('')}
+    <tr class="totrow"><td colspan="4"><b>الإجمالي</b></td><td><b>${money(tv)}</b></td><td>100%</td><td><span class="${tpl >= 0 ? 'pos' : 'neg'}"><b>${tpl >= 0 ? '+' : ''}${money(tpl)}</b></span></td><td colspan="7"></td></tr>
+  </tbody></table></div>
+  <p class="note">الربح/الخسارة محسوبة على سعر آخر تحديث، من غير عمولات. السهم اللي "مش في التحليل" يعني مستبعد شرعياً أو مش مدرج في الفحص، وسعره من بيانات الفحص الشرعي. دوس على أي سهم عشان تشوف تحليله.</p>`;
+}
 
 function renderPurifKeepFocus(){ const pos = $('#pQ').selectionStart; render(); const i = $('#pQ'); i.focus(); i.setSelectionRange(pos,pos); }
 
